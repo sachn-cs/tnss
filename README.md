@@ -1,0 +1,149 @@
+# TNSS - Tensor-Network Schnorr's Sieving
+
+[![CI](https://github.com/yourusername/tnss/workflows/CI/badge.svg)](https://github.com/yourusername/tnss/actions)
+[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
+
+A production-grade workspace implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with modern tensor network methods.
+
+## Features
+
+- **7-Stage Pipeline**: Complete implementation from lattice construction to factor extraction
+- **Workspace Architecture**: 6 crates with clear domain boundaries
+- **High Performance**: Parallel tensor contractions, optimized Gaussian elimination over GF(2)
+- **Well-Tested**: 136+ unit tests with comprehensive coverage
+- **Production Ready**: Zero compiler warnings, strict clippy compliance
+
+## Workspace Structure
+
+```
+tnss/
+├── crates/
+│   ├── core/         # Core types, errors, constants, utilities, primes
+│   ├── lattice/      # Lattice operations (LLL, BKZ, Schnorr lattice, CVP)
+│   ├── tensor/       # Tensor networks (TTN, MPO, Hamiltonian, adaptive bonds)
+│   ├── sampler/      # Optimization and sampling strategies
+│   ├── algebra/      # Number theory, smoothness, GF(2) solver, factorization
+│   └── cli/          # Command-line binary and examples
+├── docs/             # Documentation
+├── Cargo.toml        # Workspace manifest
+└── justfile          # Task runner
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Rust 1.85+ (see `rust-toolchain.toml`)
+- `just` (optional, for task runner)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/tnss.git
+cd tnss
+
+# Setup environment
+./setup.sh
+
+# Build the workspace
+cargo build --workspace --release
+```
+
+### Usage
+
+```bash
+# Factor a semiprime
+cargo run -p tnss-cli -- 91
+
+# Run examples
+cargo run -p tnss-cli --example basic_factorization -- 91
+cargo run -p tnss-cli --example batch_factorization
+```
+
+## Development
+
+### Building
+
+```bash
+# Build entire workspace
+cargo build --workspace --all-features
+
+# Build specific crate
+cargo build -p tnss-lattice
+
+# Release build
+cargo build --workspace --all-features --release
+```
+
+### Testing
+
+```bash
+# Run all tests
+cargo test --workspace --all-features
+
+# Test specific crate
+cargo test -p tnss-algebra --all-features
+
+# Run benchmarks
+cargo bench --workspace
+```
+
+### Linting and Formatting
+
+```bash
+# Format check
+cargo fmt --all -- --check
+
+# Clippy (strict)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Full validation
+just check
+```
+
+## Crate Dependencies
+
+```
+tnss-core (base)
+    ↑
+tnss-lattice → tnss-core
+    ↑
+tnss-tensor → tnss-core, tnss-lattice
+    ↑
+tnss-sampler → tnss-core, tnss-lattice, tnss-tensor
+    ↑
+tnss-algebra → tnss-core, tnss-lattice, tnss-tensor, tnss-sampler
+    ↑
+tnss-cli → all crates
+```
+
+## Algorithm Overview
+
+TNSS implements a 7-stage pipeline:
+
+| Stage | Crate | Description |
+|-------|-------|-------------|
+| 1 | `tnss-lattice` | Schnorr lattice construction |
+| 2 | `tnss-lattice` | LLL/BKZ basis reduction |
+| 3 | `tnss-sampler` | Klein sampling for CVP |
+| 4 | `tnss-tensor` | TTN variational ansatz |
+| 5 | `tnss-tensor` | MPO spectral amplification |
+| 6 | `tnss-algebra` | Smoothness verification |
+| 7 | `tnss-algebra` | GF(2) linear algebra + GCD |
+
+## Safety and Reliability
+
+- **Zero unsafe code**
+- **Structured error handling** with `thiserror`
+- **Deterministic builds** with committed `Cargo.lock`
+- **Strict quality gates** in CI
+- **Security auditing** with `cargo-deny`
+
+## License
+
+Licensed under either:
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.

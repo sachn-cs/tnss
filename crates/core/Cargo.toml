@@ -1,0 +1,28 @@
+[package]
+name = "tnss-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Core types, errors, and utilities for TNSS"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+num-traits = { workspace = true }
+ndarray = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+rayon = { workspace = true, optional = true }
+
+[features]
+default = ["parallel"]
+parallel = ["rayon", "ndarray/rayon"]
+
+[dev-dependencies]

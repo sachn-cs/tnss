@@ -1,0 +1,29 @@
+# Rust build artifacts
+target/
+Cargo.lock
+!Cargo.lock
+.cargo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Documentation build
+docs/book/
+
+# Profiling and debugging
+*.prof
+*.trace
+perf.data*
+
+# Test artifacts
+*.tmp
+*.log

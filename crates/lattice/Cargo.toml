@@ -1,0 +1,31 @@
+[package]
+name = "tnss-lattice"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Lattice reduction and CVP algorithms for TNSS"
+
+[features]
+# rayon is default-enabled via the "parallel" feature
+default = ["parallel"]
+parallel = ["rayon"]
+
+[dependencies]
+tnss-core = { path = "../core" }
+ndarray = { workspace = true }
+rug = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true, optional = true }
+lll-rs = { workspace = true }
+

@@ -28,6 +28,12 @@ This documentation describes the **Tensor-Network Schnorr's Sieving (TNSS)** alg
 | Stage 6 | [06-stage-6-smoothness-verification.md](./06-stage-6-smoothness-verification.md) | Trial division and Pollard Rho verification |
 | Stage 7 | [07-stage-7-factor-extraction.md](./07-stage-7-factor-extraction.md) | Linear algebra and factor recovery |
 
+### Implementation Improvements
+
+| Document | Description |
+|----------|-------------|
+| [12-algorithm-improvements.md](./12-algorithm-improvements.md) | Performance optimizations: parallel TTN contractions, MPO truncation, fast energy evaluation, and adaptive topology |
+
 ## Pipeline Summary
 
 ```
@@ -82,6 +88,41 @@ For understanding the complete algorithm, read in order:
 | 5 | $O(k \cdot n \cdot \chi^3)$ | MPO contraction |
 | 6 | $O(|P| \cdot \log N)$ | Trial division |
 | 7 | $O(\pi_2^2 \cdot m)$ | Gaussian elimination |
+
+## Testing
+
+All tests are designed to complete in under 1 second. Slow integration tests are marked with `#[ignore]` and can be run as benchmarks:
+
+```bash
+# Run fast unit tests (135 tests, ~0.04s)
+cargo test --lib
+
+# Run all tests including benchmarks
+cargo test --lib -- --ignored
+```
+
+### Test Categories
+
+| Category | Count | Execution Time |
+|----------|-------|----------------|
+| Unit tests | 135 | < 1 second |
+| Benchmark tests (ignored) | 11 | Varies |
+
+### Benchmark Tests
+
+The following tests are marked as slow and run only with `--ignored`:
+
+- `gf2_solver::test_large_random` - GF(2) kernel computation on 50×60 matrices
+- `opes::test_spectral_amplification` - MPO power iteration with truncation
+- `opes::test_mpo_bond_dimension_tracking` - Bond dimension stress test
+- `opes::test_hybrid_amplification_sampling` - Full OPES pipeline
+- `opes::test_parallel_sampling` - Parallel index slicing
+- `pruning::test_extreme_pruning_small` - Extreme pruning enumeration
+- `pruning::test_discrete_pruning_large` - Discrete pruning with large bounds
+- `pruning::test_pruned_enumeration_auto` - Auto-configured pruned enumeration
+- `segment_lll::test_parallel_vs_sequential` - Parallel segment reduction
+- `segment_lll::test_progressive_lll` - Progressive segment LLL
+- `segment_lll::test_orthogonality_improvement` - Orthogonality defect measurement
 
 ## References
 

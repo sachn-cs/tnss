@@ -1,0 +1,34 @@
+[package]
+name = "tnss-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Command-line interface for TNSS factorization"
+
+[[bin]]
+name = "tnss"
+path = "src/main.rs"
+
+[features]
+default = ["parallel"]
+parallel = ["tnss-lattice/parallel", "tnss-tensor/parallel", "tnss-algebra/parallel", "tnss-sampler/parallel"]
+
+[dependencies]
+tnss-core = { path = "../core" }
+tnss-lattice = { path = "../lattice" }
+tnss-tensor = { path = "../tensor" }
+tnss-algebra = { path = "../algebra" }
+tnss-sampler = { path = "../sampler" }
+clap = { version = "4", features = ["derive"] }
+rug = { workspace = true }
+log = { workspace = true }
+env_logger = "0.11"
+
+[dev-dependencies]

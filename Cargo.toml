@@ -1,24 +1,42 @@
-[package]
-name = "tnss"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
 
-[dependencies]
-lll-rs = "0.2.0"
-rug = "1.29"
+[workspace.package]
+version = "0.1.0"
+authors = ["TNSS Contributors"]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/tnss/tnss"
+repository = "https://github.com/tnss/tnss"
+documentation = "https://docs.rs/tnss"
+keywords = ["cryptography", "factorization", "lattice", "tensor-network"]
+categories = ["cryptography", "algorithms", "mathematics", "science"]
+
+[workspace.dependencies]
+# Core dependencies used across crates
+rug = { version = "1.29", default-features = false, features = ["integer", "rational", "float"] }
+ndarray = { version = "0.15", features = ["rayon"] }
 num-traits = "0.2"
 num-integer = "0.1"
 rand = "0.9"
 rand_chacha = "0.9"
 thiserror = "2"
 log = "0.4"
-env_logger = "0.11"
-ndarray = { version = "0.15", features = ["rayon"] }
 rayon = "1.10"
-ndarray-linalg = { version = "0.16", optional = true }
+lll-rs = { version = "0.2.0", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
 
-[dev-dependencies]
+# Dev dependencies
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.5"
 
-[[bin]]
-name = "tnss"
-path = "src/main.rs"
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# panic=abort yields smaller binaries but disables unwinding/backtraces.
+panic = "abort"
+# strip=symbols removes debug symbols from release builds to reduce size.
+strip = "symbols"

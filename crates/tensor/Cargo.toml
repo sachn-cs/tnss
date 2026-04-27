@@ -1,0 +1,31 @@
+[package]
+name = "tnss-tensor"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Tensor network operations and Hamiltonian optimization for TNSS"
+
+[features]
+default = ["parallel"]
+parallel = ["rayon", "ndarray/rayon"]
+
+[dependencies]
+tnss-core = { path = "../core" }
+rug = { workspace = true }
+ndarray = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }

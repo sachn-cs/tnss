@@ -1,0 +1,45 @@
+[package]
+name = "tnss-algebra"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Number theory and GF(2) linear algebra for TNSS"
+
+[features]
+default = ["parallel"]
+parallel = ["rayon", "ndarray/rayon"]
+
+[dependencies]
+tnss-core = { path = "../core" }
+# Direct dependencies (not dev-dependencies) because factor.rs constructs
+# SchnorrLattice, runs BKZ/LLL, builds TTN ansatz, and extracts basis
+# representations using types from these crates inline in the pipeline.
+tnss-lattice = { path = "../lattice" }
+tnss-tensor = { path = "../tensor" }
+# lll-rs is required directly because extract_basis_representations accepts
+# lll_rs::matrix::Matrix<lll_rs::vector::BigVector>. It is already configured
+# with default-features = false in the workspace to keep the build lighter.
+lll-rs = { workspace = true }
+rug = { workspace = true }
+ndarray = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true, optional = true }
+
+[[bench]]
+name = "factorization"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }

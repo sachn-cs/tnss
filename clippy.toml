@@ -1,0 +1,20 @@
+# Clippy configuration for TNSS
+# See: https://doc.rust-lang.org/clippy/configuration.html
+
+# Avoid breaking the public API
+avoid-breaking-exported-api = false
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Too many arguments threshold
+too-many-arguments-threshold = 8
+
+# Too many lines threshold
+too-many-lines-threshold = 200
+
+# Enforce documentation for public APIs
+missing-docs-in-crate-items = true
