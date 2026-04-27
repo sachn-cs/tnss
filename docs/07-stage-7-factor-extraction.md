@@ -1,6 +1,6 @@
 # Stage 7: Factor Extraction
 
-## Linear Algebra, Dependency Finding, and Factor Recovery
+## GF(2) Linear Algebra, Kernel Basis, and GCD-Based Factor Recovery
 
 ---
 
@@ -8,15 +8,16 @@
 
 1. [Purpose and Responsibility](#purpose-and-responsibility)
 2. [Mathematical Foundation](#mathematical-foundation)
-3. [Matrix Construction](#matrix-construction)
-4. [Gaussian Elimination over GF(2)](#gaussian-elimination-over-gf2)
-5. [Dependency Extraction](#dependency-extraction)
-6. [Square Root Computation](#square-root-computation)
-7. [GCD Factorization](#gcd-factorization)
+3. [GF(2) Matrix Construction](#gf2-matrix-construction)
+4. [Gaussian Elimination](#gaussian-elimination)
+5. [Kernel Basis Computation](#kernel-basis-computation)
+6. [Factor Recovery](#factor-recovery)
+7. [Data Structures](#data-structures)
 8. [Implementation Details](#implementation-details)
 9. [Edge Cases and Validation](#edge-cases-and-validation)
-10. [Example Walkthrough](#example-walkthrough)
-11. [Complexity Analysis](#complexity-analysis)
+10. [Complexity Analysis](#complexity-analysis)
+11. [Testing](#testing)
+12. [Pipeline Integration](#pipeline-integration)
 
 ---
 
@@ -24,32 +25,22 @@
 
 ### What This Stage Does
 
-Stage 7 performs the **final factorization** using the smooth relations collected in Stage 6. This stage applies linear algebra over GF(2) to find a subset of relations whose product forms a perfect square, yielding a congruence of squares that reveals factors of $N$.
+Stage 7 extracts prime factors from a collection of smooth relations using:
+1. **GF(2) matrix construction**: Build parity matrix from relation exponent vectors
+2. **Gaussian elimination**: Find linear dependencies over GF(2)
+3. **Kernel basis computation**: Extract nullspace vectors
+4. **Factor recovery**: Test kernel vectors via GCD
 
 ### Key Responsibilities
 
-1. **Build exponent matrix**: Construct binary matrix from smooth relation exponents
-2. **Gaussian elimination**: Reduce matrix over GF(2) to find linear dependencies
-3. **Extract dependencies**: Find subsets of relations with even total exponents
-4. **Compute squares**: Calculate $x^2 \equiv y^2 \pmod{N}$
-5. **Extract factors**: Compute $\gcd(x \pm y, N)$ to find prime factors
+1. **Build GF(2) matrix**: Assemble $(\pi_2 + 1) \times m$ binary matrix from $m$ relations
+2. **Find kernel**: Compute basis for the nullspace
+3. **Test combinations**: Try kernel vectors and their combinations
+4. **Recover factors**: Compute $\gcd(S \pm 1, N)$ for valid $S$
 
 ### Why This Matters
 
-**The Linear Algebra Bottleneck:**
-
-Factoring via congruence of squares requires:
-- $\pi_2 + 1$ smooth relations (more unknowns than primes)
-- Linear dependence among exponent vectors (guaranteed by pigeonhole principle)
-- A subset whose product is a perfect square (even exponents for all primes)
-
-**Why This Works:**
-
-If we have relations $(u_i, w_i)$ with $\prod_i u_i = \prod_i w_i \cdot k_i$, and the product has even exponents for all primes, then:
-
-$$\prod_i u_i = A^2, \quad \prod_i w_i = B^2$$
-
-This gives $A^2 \equiv B^2 \cdot K \pmod{N}$. If $K = 1$, we have $A^2 \equiv B^2 \pmod{N}$ and $\gcd(A - B, N)$ yields a factor.
+This is the **final stage** of the pipeline. Given enough smooth relations, linear algebra over GF(2) is guaranteed to find a non-trivial factorization (with high probability). The success of this stage depends entirely on the quality and quantity of relations collected in Stages 5–6.
 
 ---
 
@@ -57,745 +48,360 @@ This gives $A^2 \equiv B^2 \cdot K \pmod{N}$. If $K = 1$, we have $A^2 \equiv B^
 
 ### Congruence of Squares
 
-The fundamental theorem underlying factorization:
+Given smooth relations with exponent vectors $e_u^{(j)}$ and $e_w^{(j)}$, define:
 
-**Theorem:** If $x^2 \equiv y^2 \pmod{N}$ and $x \not\equiv \pm y \pmod{N}$, then $\gcd(x - y, N)$ is a non-trivial factor of $N$.
+$$M_{i,j} = (e_{w,i}^{(j)} + e_{u,i}^{(j)}) \pmod{2}$$
 
-**Proof:**
-- $N \mid (x^2 - y^2) = (x + y)(x - y)$
-- If $N$ is composite, some prime factor $p \mid N$ divides $(x + y)$ or $(x - y)$
-- If $x \not\equiv \pm y \pmod{N}$, then $1 < \gcd(x - y, N) < N$
+A vector $\tau \in \{0,1\}^m$ in the kernel satisfies $M \cdot \tau = 0 \pmod{2}$.
 
-### Linear Algebra over GF(2)
+For such $\tau$, define:
 
-**Exponent Vectors:**
+$$k_i = \frac{1}{2} \sum_j \tau_j \cdot (e_{w,i}^{(j)} - e_{u,i}^{(j)})$$
 
-For smooth relation $(u, w)$ with factorizations:
-- $u = \prod_{j} p_j^{e_j}$
-- $w = \prod_{j} p_j^{f_j}$
+Then:
 
-The **exponent vector** is:
+$$A = \prod_{i > 0, k_i > 0} p_i^{k_i}, \quad B = \prod_{i > 0, k_i < 0} p_i^{-k_i}$$
 
-$$\mathbf{v} = (e_1 - f_1, e_2 - f_2, \ldots, e_{\pi_2} - f_{\pi_2}) \pmod{2}$$
+$$S \equiv A \cdot B^{-1} \pmod{N}$$
 
-**Linear Dependence:**
+If $S \not\equiv \pm 1 \pmod{N}$, then:
 
-Given $m$ relations with $m > \pi_2$, the $m$ vectors in $\mathbb{F}_2^{\pi_2}$ are linearly dependent. There exists $\mathbf{s} \in \{0,1\}^m$ such that:
+$$\gcd(S + 1, N) \text{ and } \gcd(S - 1, N)$$
 
-$$\sum_{i=1}^m s_i \cdot \mathbf{v}_i \equiv \mathbf{0} \pmod{2}$$
+yield non-trivial factors of $N$.
 
-This means the product of selected relations has **even exponents for all primes**.
+### GF(2) Arithmetic
 
-### Perfect Square Construction
+The field GF(2) has two elements $\{0, 1\}$ with:
+- Addition = XOR
+- Multiplication = AND
 
-Given dependency $\mathbf{s}$:
-
-$$x = \prod_{i: s_i = 1} u_i^{1/2}, \quad y = \prod_{i: s_i = 1} w_i^{1/2}$$
-
-The exponents are integers because $\mathbf{s}$ selects relations with even total exponents.
-
-### Gaussian Elimination over GF(2)
-
-**Algorithm:**
-
-```
-Procedure GaussianEliminationGF2(matrix):
-    // matrix: m rows × n columns over GF(2)
-    // Returns: Reduced row echelon form
-    
-    row ← 0
-    FOR col = 0 TO n-1:
-        // Find pivot
-        pivot ← FindPivot(matrix, row, col)
-        IF pivot IS None THEN CONTINUE
-        
-        // Swap rows
-        SWAP(matrix[row], matrix[pivot])
-        
-        // Eliminate column
-        FOR r = 0 TO m-1:
-            IF r ≠ row AND matrix[r][col] = 1:
-                matrix[r] ← matrix[r] XOR matrix[row]
-        
-        row ← row + 1
-    
-    RETURN matrix
-```
-
-**Complexity:** $O(n^2 \cdot m)$ bit operations.
+Matrix operations use word-level XOR on `u64` words for efficiency.
 
 ---
 
-## Matrix Construction
+## GF(2) Matrix Construction
 
-### Building the Exponent Matrix
+**Function**: `try_extract_factors_optimized(n, sr_pairs, pi_2, combination_trials, basis)`
 
-```
-Algorithm: BuildExponentMatrix
-Input:
-    relations: Vec<SmoothRelation> (from Stage 6)
-    factor_base: Vec<u64> (length π_2)
+**File**: `crates/algebra/src/factor.rs`
 
-Output:
-    matrix: Binary matrix (m rows × π_2 columns)
+### Algorithm
 
-Procedure BuildExponentMatrix(relations, factor_base):
-    π_2 ← LENGTH(factor_base)
-    m ← LENGTH(relations)
-    
-    matrix ← ZeroMatrix(m, π_2)  // Over GF(2)
-    
-    FOR i = 0 TO m-1:
-        relation ← relations[i]
-        
-        // Build full exponent vector
-        exponents ← ZeroVector(π_2)
-        
-        // Add u exponents
-        FOR (prime_idx, exp) IN relation.u_factors:
-            exponents[prime_idx] ← (exponents[prime_idx] + exp) MOD 2
-        
-        // Subtract w exponents (mod 2: subtraction = addition)
-        FOR (prime_idx, exp) IN relation.w_factors:
-            exponents[prime_idx] ← (exponents[prime_idx] + exp) MOD 2
-        
-        matrix[i] ← exponents
-    
-    RETURN matrix
-```
-
-### Sparse vs Dense Representation
-
-**Dense Matrix:**
-- Store as `Vec<Vec<u8>>` or `Vec<u64>` (bit-packed)
-- Good for: Small factor bases ($\pi_2 < 10^4$)
-- Memory: $O(m \cdot \pi_2)$ bits
-
-**Sparse Matrix:**
-- Store as list of non-zero column indices per row
-- Good for: Large factor bases, when relations are sparse
-- Memory: $O(m \cdot \text{average_nonzeros})$ integers
+1. Build matrix $M$ with $\pi_2 + 1$ rows and $m$ columns:
+   ```rust
+   M[i][j] = ((sr_pairs[j].e_w[i] + sr_pairs[j].e_u[i]) % 2) as u8
+   ```
+2. If $m > 100$: build in parallel using `rayon`
 
 ---
 
-## Gaussian Elimination over GF(2)
+## Gaussian Elimination
 
-### Optimized Bit-Packed Implementation
+**Function**: `gaussian_elimination(matrix) -> Vec<usize>`
 
-```
-Algorithm: GaussianEliminationBitPacked
-Input:
-    matrix: Vec<Vec<u64>> (each row is bit-packed)
-    m: Number of rows
-    n: Number of columns
+**File**: `crates/algebra/src/gf2_solver.rs`
 
-Output:
-    reduced_matrix: Row echelon form
-    pivot_cols: List of pivot column indices
+### Algorithm
 
-Procedure GaussianEliminationBitPacked(matrix, m, n):
-    pivot_cols ← EmptyList()
-    row ← 0
-    
-    FOR col = 0 TO n-1:
-        // Find row with bit 'col' set
-        pivot ← None
-        FOR r = row TO m-1:
-            IF GetBit(matrix[r], col) = 1:
-                pivot ← r
-                BREAK
-        
-        IF pivot IS None THEN CONTINUE
-        
-        // Swap to current row
-        SWAP(matrix[row], matrix[pivot])
-        pivot_cols.APPEND(col)
-        
-        // Eliminate this column from all other rows
-        FOR r = 0 TO m-1:
-            IF r ≠ row AND GetBit(matrix[r], col) = 1:
-                matrix[r] ← XOR(matrix[r], matrix[row])
-        
-        row ← row + 1
-        IF row = m THEN BREAK
-    
-    RETURN (matrix, pivot_cols)
+Standard Gaussian elimination over GF(2) with bit-packed storage:
+
+1. For each column $c$ from $0$ to `cols - 1`:
+   - Find pivot row $r \geq \text{current_row}$ with $M[r][c] = 1$
+   - If found:
+     - Swap rows
+     - Record pivot column
+     - Eliminate column from rows below: `row_i ^= row_r` for all $i > r$
+     - Increment current row
+
+### Bit-Packed Storage
+
+**Struct**: `BitMatrix`
+
+```rust
+pub struct BitMatrix {
+    rows: usize,
+    cols: usize,
+    data: Vec<Vec<u64>>,  // Each row: Vec<u64>, 64 bits per word
+}
 ```
 
-### Finding the Null Space
-
-**Dependency Vector Extraction:**
-
+**Row XOR**: `row_xor(target, source)` performs word-level XOR:
+```rust
+for word_idx in 0..data[target].len() {
+    data[target][word_idx] ^= data[source][word_idx];
+}
 ```
-Algorithm: ExtractDependencies
-Input:
-    matrix: Reduced row echelon form (m × n)
-    pivot_cols: Pivot column indices
-    free_cols: Non-pivot column indices
 
-Output:
-    dependencies: List of dependency vectors
-
-Procedure ExtractDependencies(matrix, pivot_cols, free_cols):
-    dependencies ← EmptyList()
-    
-    FOR free_col IN free_cols:
-        // Start with indicator for this free variable
-        dep ← ZeroVector(m)
-        dep[free_col] ← 1
-        
-        // Back-substitute
-        FOR i = 0 TO LENGTH(pivot_cols)-1:
-            pivot_col ← pivot_cols[i]
-            // If row i has 1 in column free_col, add pivot variable
-            IF matrix[i][free_col] = 1:
-                dep[pivot_col] ← 1
-        
-        dependencies.APPEND(dep)
-    
-    RETURN dependencies
-```
+This is **64x faster** than byte-level XOR and cache-friendly.
 
 ---
 
-## Dependency Extraction
+## Kernel Basis Computation
 
-### Finding Square-Producing Subsets
+**Function**: `kernel_basis(bytes) -> Vec<Vec<u8>>`
 
-```
-Algorithm: FindSquareSubset
-Input:
-    relations: Vec<SmoothRelation>
-    dependency: Vec<u8> (binary vector over GF(2))
+**File**: `crates/algebra/src/gf2_solver.rs`
 
-Output:
-    square_relation: (x, y) such that x² ≡ y² (mod N)
+### Algorithm
 
-Procedure FindSquareSubset(relations, dependency):
-    // Select relations where dependency[i] = 1
-    selected ← [i for i in 0..n-1 if dependency[i] = 1]
-    
-    // Verify this forms a perfect square
-    // (All prime exponents should be even)
-    total_exponents ← ZeroVector(π_2)
-    
-    FOR i IN selected:
-        relation ← relations[i]
-        FOR (prime_idx, exp) IN relation.u_factors:
-            total_exponents[prime_idx] ← total_exponents[prime_idx] + exp
-        FOR (prime_idx, exp) IN relation.w_factors:
-            total_exponents[prime_idx] ← total_exponents[prime_idx] + exp
-    
-    // Check all even
-    FOR exp IN total_exponents:
-        IF exp MOD 2 ≠ 0:
-            RETURN Error("Not a perfect square!")
-    
-    // Compute square roots
-    x ← 1
-    y ← 1
-    
-    FOR i IN selected:
-        relation ← relations[i]
-        x ← x · relation.u
-        y ← y · relation.w
-    
-    // x and y should be perfect squares
-    x_sqrt ← IntegerSqrt(x)
-    y_sqrt ← IntegerSqrt(y)
-    
-    RETURN (x_sqrt, y_sqrt)
-```
+1. Build augmented matrix: $[M^T \mid I_m]$ of size $m \times (n + m)$
+2. Perform Gaussian elimination on the left $n$ columns
+3. Extract kernel basis from rows where the left block is all-zero:
+   - The right block (columns $n$ to $n+m-1$) gives a kernel vector
+
+**Verification**: In debug builds, each kernel vector is verified by multiplying it with the original matrix.
 
 ---
 
-## Square Root Computation
+## Factor Recovery
 
-### Integer Square Root
+**Function**: `try_tau_vector(n, tau, sr_pairs, pi_2, basis) -> Option<(Integer, Integer)>`
 
-```
-Algorithm: IntegerSqrt
-Input:
-    n: Integer (guaranteed to be a perfect square)
+**File**: `crates/algebra/src/factor.rs`
 
-Output:
-    sqrt_n: Integer square root of n
+### Algorithm
 
-Procedure IntegerSqrt(n):
-    // Newton's method
-    IF n = 0 THEN RETURN 0
-    IF n = 1 THEN RETURN 1
-    
-    x ← n
-    y ← (x + n/x) / 2
-    
-    WHILE y < x:
-        x ← y
-        y ← (x + n/x) / 2
-    
-    // Verify
-    ASSERT x² = n
-    RETURN x
-```
+1. **Compute $k_i$**:
+   ```rust
+   k[i] = sum_j tau_j * (e_w[i][j] - e_u[i][j]) / 2
+   ```
+   - If any sum is odd, reject ($\tau$ is not in the kernel)
+2. **Check triviality**: If $k_i = 0$ for all $i > 0$, reject
+3. **Build $A$ and $B$**:
+   ```rust
+   A = product of p_i^k_i for k_i > 0
+   B = product of p_i^(-k_i) for k_i < 0
+   ```
+4. **Compute $S \pmod{N}$**:
+   ```rust
+   b_inv = B.invert_mod(N)
+   S = (A * b_inv) % N
+   ```
+5. **Test GCDs**:
+   ```rust
+   p1 = gcd(S + 1, N)
+   if 1 < p1 < N: return (p1, N / p1)
+   p2 = gcd(S - 1, N)
+   if 1 < p2 < N: return (p2, N / p2)
+   ```
+6. If neither succeeds, return `None`
+
+### Combination Search
+
+`try_extract_factors_optimized` tries multiple strategies:
+
+1. **Individual kernel vectors**: Try each basis vector
+   - Parallel if kernel size > 10
+2. **Structured combinations**: Try windows of 2–5 consecutive basis vectors
+3. **Random combinations**: Sample subsets with increasing inclusion probability
+   - 50 trials by default
+   - Probability increases from 0.3 to 0.7 over trials
 
 ---
 
-## GCD Factorization
+## Data Structures
 
-### Computing Non-Trivial Factors
+### `BitMatrix`
 
-```
-Algorithm: ExtractFactors
-Input:
-    x: Square root of u product
-    y: Square root of w product
-    N: Semiprime to factor
+**File**: `crates/algebra/src/gf2_solver.rs`
 
-Output:
-    factors: (p, q) such that p · q = N, or None
-
-Procedure ExtractFactors(x, y, N):
-    // Compute candidate factors
-    diff ← |x - y|
-    sum ← x + y
-    
-    factor1 ← GCD(diff, N)
-    factor2 ← GCD(sum, N)
-    
-    // Check if we found non-trivial factors
-    IF factor1 > 1 AND factor1 < N:
-        other_factor ← N / factor1
-        RETURN (factor1, other_factor)
-    
-    IF factor2 > 1 AND factor2 < N:
-        other_factor ← N / factor2
-        RETURN (factor2, other_factor)
-    
-    // Trivial factors found (x ≡ ±y mod N)
-    RETURN None
+```rust
+pub struct BitMatrix {
+    rows: usize,
+    cols: usize,
+    data: Vec<Vec<u64>>,
+}
 ```
 
-### Extended Euclidean Algorithm
+**Methods**:
+- `new(rows, cols) -> Self`
+- `from_bytes(bytes) -> Result<Self>`
+- `to_bytes() -> Vec<Vec<u8>>`
+- `get(row, col) -> bool`
+- `set(row, col, value)`
+- `row_xor(target, source)`
+- `find_pivot(start_row, col) -> Option<usize>`
+- `swap_rows(a, b)`
 
+### `FactorResult`
+
+**File**: `crates/algebra/src/factor.rs`
+
+```rust
+pub struct FactorResult {
+    pub p: Integer,                  // First prime factor
+    pub q: Integer,                  // Second prime factor
+    pub relations_found: usize,       // Number of smooth relations
+    pub cvp_tried: usize,           // Number of CVP instances
+    pub stats: PipelineStats,       // Timing statistics
+}
 ```
-Algorithm: ExtendedGCD
-Input:
-    a, b: Integers
 
-Output:
-    (g, x, y): Such that ax + by = gcd(a, b) = g
+### `PipelineStats`
 
-Procedure ExtendedGCD(a, b):
-    IF b = 0:
-        RETURN (a, 1, 0)
-    
-    (g, x1, y1) ← ExtendedGCD(b, a MOD b)
-    
-    x ← y1
-    y ← x1 - (a / b) · y1
-    
-    RETURN (g, x, y)
+```rust
+pub struct PipelineStats {
+    pub lattice_time_ms: f64,
+    pub reduction_time_ms: f64,
+    pub sampling_time_ms: f64,
+    pub smoothness_time_ms: f64,
+    pub linear_algebra_time_ms: f64,
+    pub extraction_time_ms: f64,
+    pub cvp_instances: usize,
+    pub smooth_relations: usize,
+    pub avg_bond_dim: Option<f64>,
+    pub num_slices: usize,
+}
 ```
 
 ---
 
 ## Implementation Details
 
-### Data Structures
+### Parallel GF(2) Matrix Construction
 
+If `cols > 100`, the matrix is built in parallel:
 ```rust
-/// Result of the factorization.
-#[derive(Debug, Clone)]
-pub struct FactorizationResult {
-    /// The prime factors of N.
-    pub factors: Vec<Integer>,
-    /// The original semiprime.
-    pub semiprime: Integer,
-    /// Number of smooth relations used.
-    pub num_relations: usize,
-    /// Matrix dimensions.
-    pub matrix_size: (usize, usize),  // (rows, columns)
-    /// Time spent in linear algebra (ms).
-    pub linear_algebra_time_ms: u64,
-    /// Number of dependencies tried.
-    pub dependencies_tried: usize,
-}
-
-/// Linear system over GF(2).
-pub struct GF2LinearSystem {
-    /// Bit-packed matrix (rows × words).
-    pub matrix: Vec<Vec<u64>>,
-    /// Number of rows (relations).
-    pub num_rows: usize,
-    /// Number of columns (primes in factor base).
-    pub num_cols: usize,
-    /// Pivot positions for reduced form.
-    pub pivots: Vec<Option<usize>>,
-}
-
-impl GF2LinearSystem {
-    /// Build system from smooth relations.
-    pub fn from_relations(
-        relations: &[SmoothRelation],
-        factor_base_size: usize,
-    ) -> Self {
-        // Implementation...
-    }
-    
-    /// Perform Gaussian elimination.
-    pub fn eliminate(&mut self) -> Vec<usize> {
-        // Returns pivot columns
-    }
-    
-    /// Extract null space vectors.
-    pub fn null_space(&self) -> Vec<Vec<u8>> {
-        // Returns dependency vectors
-    }
-}
-
-/// Factor extraction configuration.
-pub struct FactorExtractionConfig {
-    /// Maximum number of dependencies to try.
-    pub max_dependencies: usize,
-    /// Use sparse matrix representation.
-    pub use_sparse: bool,
-    /// Block size for block Lanczos (if sparse).
-    pub block_size: usize,
-    /// Timeout for linear algebra (seconds).
-    pub la_timeout_secs: u64,
-}
-
-impl Default for FactorExtractionConfig {
-    fn default() -> Self {
-        Self {
-            max_dependencies: 100,
-            use_sparse: false,
-            block_size: 64,
-            la_timeout_secs: 3600,
-        }
-    }
-}
+(0..rows).into_par_iter().map(|i| { ... }).collect()
 ```
 
-### Numerical Considerations
+### Parallel Kernel Testing
 
-**1. Bit packing:**
+If `kernel.len() > 10`, basis vectors are tested in parallel:
 ```rust
-// Number of 64-bit words per row
-let words_per_row = (num_cols + 63) / 64;
-
-// Access element
-fn get_bit(row: &[u64], col: usize) -> bool {
-    let word = col / 64;
-    let bit = col % 64;
-    (row[word] >> bit) & 1 == 1
-}
-
-// XOR rows
-fn xor_rows(a: &mut [u64], b: &[u64]) {
-    for i in 0..a.len() {
-        a[i] ^= b[i];
-    }
-}
+kernel.par_iter().find_map_first(|tau| try_tau_vector(...))
 ```
 
-**2. Integer sqrt with Newton's method:**
-```rust
-fn integer_sqrt(n: &Integer) -> Integer {
-    if n <= &Integer::from(1) {
-        return n.clone();
-    }
-    
-    let mut x = n.clone();
-    let mut y = (n.clone() / 2u32) + 1u32;
-    
-    while y < x {
-        x = y.clone();
-        y = ((&x + n / &x) / 2u32);
-    }
-    
-    x
-}
-```
+### Modular Inverse
 
-**3. GCD computation:**
-```rust
-fn gcd(a: &Integer, b: &Integer) -> Integer {
-    a.clone().gcd(b)
-}
-```
+The `rug::Integer::invert_ref` method computes $B^{-1} \pmod{N}$. If $B$ and $N$ are not coprime, it returns `None` and the vector is skipped.
+
+### Early Termination
+
+The main pipeline (`factorize`) attempts factor extraction as soon as `sr_pairs.len() >= pi_2 + 2` relations are collected. If extraction fails, more relations are gathered.
+
+### Timeout
+
+If `Config.max_wall_time_secs > 0`, the main loop breaks when the elapsed time exceeds the limit.
+
+### Convergence Check
+
+If `Config.enable_early_termination` is true and the best energy does not improve by more than `convergence_threshold` for 5 consecutive CVP instances, the loop breaks early.
 
 ---
 
 ## Edge Cases and Validation
 
-### Input Validation
+### Trivial Kernel
 
-| Condition | Check | Action |
-|-----------|-------|--------|
-| Insufficient relations | relations.len() > factor_base.len() | Error |
-| Empty factor base | factor_base.len() > 0 | Error |
-| N not composite | IsComposite(N) | Error |
+If the kernel is empty (only the zero vector), factor extraction fails. This happens when the relations are linearly independent over GF(2).
 
-### Runtime Edge Cases
+### Trivial $S$
 
-**Case: Only trivial dependencies**
-- **Issue:** All dependencies yield $x \equiv \pm y \pmod{N}$
-- **Resolution:** Try more dependencies or collect more relations
+If $S \equiv \pm 1 \pmod{N}$, the GCD yields $N$ or $1$, which are rejected. This occurs for "unlucky" kernel vectors.
 
-**Case: GCD = 1**
-- **Issue:** $\gcd(x - y, N) = 1$ (coprime)
-- **Resolution:** This shouldn't happen if dependency is valid; indicates bug
+### Non-Invertible $B$
 
-**Case: GCD = N**
-- **Issue:** $\gcd(x - y, N) = N$ (same as $x \equiv y \pmod{N}$)
-- **Resolution:** Skip, try next dependency
+If $B$ shares a factor with $N$, `invert_ref` returns `None` and the vector is skipped.
 
-**Case: Non-square product**
-- **Issue:** Bug in linear algebra - dependency doesn't yield perfect square
-- **Resolution:** Debug and verify matrix construction
+### Empty Relations
 
-**Case: Integer overflow in product**
-- **Issue:** Product of selected relations exceeds memory
-- **Resolution:** Use arbitrary precision integers or compute incrementally
+If no smooth relations are found, `factorize` returns `Err(Error::InsufficientSmoothRelations)`.
 
-### Debug Assertions
+### Exponent Overflow
 
-```rust
-debug_assert!(
-    relations.len() > factor_base.len(),
-    "Need more relations than factor base size"
-);
-debug_assert!(
-    N > &Integer::ONE,
-    "N must be greater than 1"
-);
-debug_assert!(
-    is_composite(N),
-    "N must be composite"
-);
-```
-
----
-
-## Example Walkthrough
-
-### Example: Factoring N = 91
-
-**Setup:**
-- $N = 91 = 7 \times 13$
-- Factor base: $P = \{2, 3, 5, 7, 11, 13\}$
-- Need at least 7 relations (6 primes + 1)
-
-**Relations from Stage 6:**
-
-| Relation | u | w | Exponents (mod 2) |
-|----------|---|---|-------------------|
-| R1 | 70=2·5·7 | 21=3·7 | [1,1,1,0,0,0] |
-| R2 | 30=2·3·5 | 1 | [1,1,1,0,0,0] |
-| R3 | 14=2·7 | 2 | [0,0,0,1,0,0] |
-| R4 | 65=5·13 | 8=2³ | [1,0,1,0,0,1] |
-| R5 | 26=2·13 | 13 | [1,0,0,0,0,0] |
-| R6 | 39=3·13 | 4=2² | [0,1,0,0,0,1] |
-| R7 | 52=4·13 | 3 | [0,1,0,0,0,1] |
-
-Wait, these exponents don't look right. Let me recalculate with proper format:
-
-For each relation, exponents are (u_exp - w_exp) mod 2:
-
-R1: u=70=2¹·3⁰·5¹·7¹·11⁰·13⁰, w=21=3¹·7¹
-   diff: [1, 0-1=1, 1, 1-1=0, 0, 0] = [1,1,1,0,0,0]
-
-Actually w=21=3·7, so:
-   u: 2¹, 3⁰, 5¹, 7¹ → [1,0,1,1,0,0]
-   w: 2⁰, 3¹, 5⁰, 7¹ → [0,1,0,1,0,0]
-   diff: [1,1,1,0,0,0] ✓
-
-R2: u=30=2·3·5, w=1
-   u: [1,1,1,0,0,0]
-   w: [0,0,0,0,0,0]
-   diff: [1,1,1,0,0,0]
-
-R3: u=14=2·7, w=2
-   u: [0,0,0,1,0,0]  (only 7)
-   Wait, u=14=2·7, so [1,0,0,1,0,0]
-   w=2=[1,0,0,0,0,0]
-   diff: [0,0,0,1,0,0]
-
-R4: u=65=5·13, w=8=2³
-   u: [0,0,1,0,0,1]
-   w: [1,0,0,0,0,0]
-   diff: [1,0,1,0,0,1]
-
-R5: u=26=2·13, w=13
-   u: [1,0,0,0,0,1]
-   w: [0,0,0,0,0,1]
-   diff: [1,0,0,0,0,0]
-
-R6: u=39=3·13, w=4=2²
-   u: [0,1,0,0,0,1]
-   w: [0,0,0,0,0,0] (2² has even exponent)
-   diff: [0,1,0,0,0,1]
-
-R7: u=52=4·13=2²·13, w=3
-   u: [0,0,0,0,0,1] (2² even)
-   w: [0,1,0,0,0,0]
-   diff: [0,1,0,0,0,1]
-
-**Matrix (7 rows × 6 columns):**
-
-```
-    2  3  5  7 11 13
-R1 [1, 1, 1, 0, 0, 0]
-R2 [1, 1, 1, 0, 0, 0]
-R3 [0, 0, 0, 1, 0, 0]
-R4 [1, 0, 1, 0, 0, 1]
-R5 [1, 0, 0, 0, 0, 0]
-R6 [0, 1, 0, 0, 0, 1]
-R7 [0, 1, 0, 0, 0, 1]
-```
-
-**Gaussian Elimination:**
-
-```
-Pivot on col 0 (row 0): R1
-  R2 XOR R1: [0,0,0,0,0,0] → row 1 becomes 0
-  R4 XOR R1: [0,1,0,0,0,1]
-  R5 XOR R1: [0,1,1,0,0,0]
-
-Matrix after col 0:
-[1,1,1,0,0,0]
-[0,0,0,0,0,0]  <- zero row!
-[0,0,0,1,0,0]
-[0,1,0,0,0,1]
-[0,1,1,0,0,0]
-[0,1,0,0,0,1]
-[0,1,0,0,0,1]
-
-Pivot on col 1 (row 1 was zero, so use R3... wait R3 has col 1 = 0)
-Actually pivot on col 1 from row 1: R4 has col 1 = 1
-Swap R2 and R4:
-[1,1,1,0,0,0]
-[0,1,0,0,0,1]
-[0,0,0,1,0,0]
-[0,0,0,0,0,0]
-...
-
-Continue eliminating...
-```
-
-We find that rows 1 and 2 (R1 and R2) are linearly dependent (actually identical!).
-
-**Dependency:** Select R1 and R2
-
-Product of R1 and R2:
-- u: 70 · 30 = 2100 = 2² · 3¹ · 5² · 7¹
-- Wait, that's not a perfect square!
-
-Actually R1 XOR R2 = 0, so they form a dependency.
-But the product u₁·u₂ should have all even exponents.
-
-Let me check: R1 = [1,1,1,0,0,0], R2 = [1,1,1,0,0,0]
-R1 + R2 (mod 2) = [0,0,0,0,0,0] ✓
-
-But we need to include both relations in the product.
-
-u = 70 · 30 = 2100 = 2² · 3 · 5² · 7
-Exponents: [2, 1, 2, 1, 0, 0] - not all even!
-
-Hmm, I think I made an error. Let me reconsider the exponent vector.
-
-Actually the issue is that R1 and R2 have the same exponents, so their sum is 0 mod 2.
-But for the product, we need the total exponents to be even.
-
-u₁: 70 = 2·5·7
-u₂: 30 = 2·3·5
-
-Product: 2100 = 2² · 3 · 5² · 7
-
-3 has exponent 1 (odd) and 7 has exponent 1 (odd). Not a perfect square!
-
-The problem is that I used the same relation structure. Let me construct valid relations where the product forms a perfect square.
-
-**Corrected Example:**
-
-Need relations where combined exponents are even.
-
-R1: u=14=2·7, w=2, diff=[0,0,0,1,0,0]
-R2: u=21=3·7, w=3, diff=[0,0,0,1,0,0]
-
-These are the same! Not good.
-
-Let me use the classic example:
-N = 91 = 7 × 13
-
-Find relations where u ≡ w (mod 91):
-
-14 ≡ 14 (mod 91): 14=2·7 (trivial)
-
-Try: 30² mod 91
-30² = 900 = 9·91 + 81 = 81 + 819, so 30² ≡ 81 (mod 91)
-81 = 3⁴, so we have 30² ≡ 3⁴ (mod 91)
-
-Check: 30² - 81 = 900 - 81 = 819 = 9·91 ✓
-
-So x = 30, y = 9, and x² - y² = 819 = 9·91
-
-gcd(30-9, 91) = gcd(21, 91) = 7 ✓
-gcd(30+9, 91) = gcd(39, 91) = 13 ✓
-
-**Stage 7 Process:**
-
-1. Build matrix from relations
-2. Find dependency: R = {30² ≡ 3⁴ (mod 91)}
-3. x = 30, y = 9
-4. gcd(21, 91) = 7, so factors are 7 and 13
+When computing $p_i^{k_i}$, the exponent $k_i$ is converted to `u32`. If $|k_i| > u32::MAX$, the conversion fails and the vector is skipped.
 
 ---
 
 ## Complexity Analysis
 
-### Time Complexity
+| Operation | Time | Space |
+|-----------|------|-------|
+| GF(2) matrix construction | $O((\pi_2 + 1) \cdot m)$ | $O((\pi_2 + 1) \cdot m / 8)$ |
+| GF(2) matrix construction (parallel) | $O((\pi_2 + 1) \cdot m / p)$ | $O((\pi_2 + 1) \cdot m / 8)$ |
+| Gaussian elimination | $O(\min(r, c) \cdot r \cdot c / 64)$ | $O(r \cdot c / 64)$ |
+| Kernel basis | $O(c \cdot r \cdot (r + c) / 64)$ | $O(c \cdot (r + c) / 64)$ |
+| Per tau vector | $O(\pi_2 \cdot m + \pi_2 \cdot \log |k_i|)$ | $O(\pi_2)$ |
+| Combination trials | $O(\text{trials} \cdot \pi_2 \cdot m)$ | $O(\pi_2)$ |
 
-| Operation | Complexity | Notes |
-|-----------|-----------|-------|
-| Matrix construction | $O(m \cdot \pi_2)$ | $m$ = relations, $\pi_2$ = factor base |
-| Gaussian elimination | $O(\pi_2^2 \cdot m)$ | Over GF(2) |
-| Dependency extraction | $O(\pi_2 \cdot m)$ | Per dependency |
-| Square root | $O(\log N)$ | Newton's method |
-| GCD | $O(\log^2 N)$ | Extended Euclidean |
-| **Total** | $O(\pi_2^2 \cdot m)$ | Dominated by linear algebra |
-
-### Space Complexity
-
-| Component | Space | Notes |
-|-----------|-------|-------|
-| Exponent matrix | $O(m \cdot \pi_2 / 8)$ | Bit-packed bytes |
-| Pivot tracking | $O(\pi_2)$ | Indices |
-| Working vectors | $O(\pi_2)$ | Temporary storage |
-| **Total** | $O(m \cdot \pi_2)$ | Linear in matrix size |
-
-### Comparison: Dense vs Sparse Linear Algebra
-
-| Method | Time | Space | When to Use |
-|--------|------|-------|-------------|
-| Dense | $O(\pi_2^2 \cdot m)$ | $O(m \cdot \pi_2)$ | $\pi_2 < 10^4$ |
-| Sparse (Lanczos) | $O(m \cdot \text{nz})$ | $O(m \cdot \text{nz})$ | $\pi_2 > 10^5$ |
-| Block Lanczos | $O(\pi_2^3 / B)$ | $O(m \cdot B)$ | Very large systems |
+Where $r = \pi_2 + 1$, $c = m$ (number of relations), $p$ = threads.
 
 ---
 
-## Summary
+## Testing
 
-Stage 7 extracts the prime factors using linear algebra over GF(2). This stage:
+Tests are in `crates/algebra/src/gf2_solver.rs` (10 tests):
 
-- **Builds the exponent matrix:** From smooth relations to binary vectors
-- **Finds linear dependencies:** Guaranteed by the pigeonhole principle
-- **Constructs congruence of squares:** Perfect square products
-- **Extracts factors:** Via GCD computation
+- `test_bit_matrix_basic` — get/set operations
+- `test_bit_matrix_roundtrip` — from_bytes/to_bytes identity
+- `test_from_bytes_dimension_mismatch` — error on inconsistent rows
+- `test_gaussian_elimination` — pivots and row-echelon form
+- `test_kernel_simple` — 2x3 matrix with non-trivial kernel
+- `test_kernel_basis` — 2x3 matrix with 1-dimensional kernel
+- `test_full_rank` — identity matrix has trivial kernel
+- `test_rank_deficient` — 4x4 rank-2 matrix, nullity = 2
+- `test_row_xor` — word-level XOR correctness
+- `test_determinism` — same input produces identical kernel
 
-The key insight is that **smooth relations encode linear dependencies** among prime exponents. Finding these dependencies reveals multiplicative relations that produce perfect squares, and the difference of squares reveals the factors.
+Tests are in `crates/algebra/src/factor.rs` (5 tests):
+
+- `test_config_defaults` — dimension scales with bit size
+- `test_small_semiprime_config` — small config disables adaptive bonds
+- `test_large_semiprime_config` — large config enables BKZ
+- `test_config_parsing` — slices >= 1
+- `test_empty_tau` — empty tau returns None
+
+Integration tests are in `crates/algebra/tests/integration_tests.rs` (11 tests):
+
+- End-to-end factorization tests
+- Prime generation correctness
+- Lattice construction and reduction
+- GF(2) solver on random matrices
+- Smoothness testing
+- Utility function tests
 
 ---
 
-*This completes the 7-stage TNSS pipeline documentation.*
+## Pipeline Integration
+
+Stage 7 is the terminal stage of the `factorize` function in `crates/algebra/src/factor.rs`.
+
+### Success Path
+
+```
+SchnorrLattice::new
+  → reduce_basis_lll / bkz_reduce
+  → compute_gram_schmidt
+  → babai_rounding
+  → CvpHamiltonian::new
+  → sample_with_ttn / sample_fallback
+  → process_samples_for_relations
+  → try_extract_factors_optimized
+  → try_tau_vector
+  → (p, q)
+```
+
+### Failure Paths
+
+1. **Insufficient relations**: After `max_cvp` instances, fewer than `pi_2 + 2` relations found → `Error::InsufficientSmoothRelations`
+2. **Trivial kernel**: All kernel vectors yield $S \equiv \pm 1$ → continue to next CVP instance
+3. **Timeout**: `max_wall_time_secs` exceeded → break loop, return insufficient relations error
+4. **Convergence plateau**: Early termination triggered → return insufficient relations error
+
+### CLI Usage
+
+```bash
+cargo run -p tnss-cli -- 91
+```
+
+The CLI binary in `crates/cli/src/main.rs`:
+1. Parses arguments with `clap`
+2. Calls `factorize`
+3. Prints results with timing statistics
+4. Verifies $p \cdot q = N$
+
+---
+
+*End of stage documentation. See [Implementation Notes](./08-implementation-notes.md) for known limitations and simplifications.*

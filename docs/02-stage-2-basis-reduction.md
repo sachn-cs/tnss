@@ -1,6 +1,6 @@
 # Stage 2: Lattice Basis Reduction
 
-## LLL, BKZ, and Hybrid Pruning for High-Quality Lattice Bases
+## LLL, Segment LLL, BKZ, and Pruning for High-Quality Lattice Bases
 
 ---
 
@@ -13,8 +13,8 @@
 5. [Data Structures](#data-structures)
 6. [Implementation Details](#implementation-details)
 7. [Edge Cases and Validation](#edge-cases-and-validation)
-8. [Example Walkthrough](#example-walkthrough)
-9. [Complexity Analysis](#complexity-analysis)
+8. [Complexity Analysis](#complexity-analysis)
+9. [Testing](#testing)
 10. [Connection to Stage 3](#connection-to-stage-3)
 
 ---
@@ -23,28 +23,26 @@
 
 ### What This Stage Does
 
-Stage 2 transforms the raw Schnorr lattice into a **well-reduced basis** that enables efficient and accurate Closest Vector Problem (CVP) approximation. This stage combines three powerful reduction techniques:
+Stage 2 transforms the raw Schnorr lattice into a **well-reduced basis** that enables efficient and accurate Closest Vector Problem (CVP) approximation. This stage combines three reduction techniques:
 
-1. **Segment LLL**: Parallel LLL reduction with $O(n^4 \log n)$ complexity
-2. **Gram-Schmidt Orthogonalization**: Modified GS for numerical stability
-3. **BKZ with Hybrid Pruning**: Block Korkine-Zolotarev enumeration with Extreme/Discrete pruning strategy
+1. **LLL Reduction**: Standard Lenstra-Lenstra-Lovasz algorithm
+2. **Segment LLL**: Divide-and-conquer LLL for faster reduction
+3. **BKZ with Pruning**: Block Korkine-Zolotarev enumeration for higher-quality bases
 
 ### Key Responsibilities
 
 1. **Reduce the basis**: Transform basis vectors to be shorter and more orthogonal
 2. **Compute GSO data**: Gram-Schmidt vectors, coefficients, and norms
 3. **Enumerate short vectors**: Use BKZ to find shorter vectors in sublattices
-4. **Apply pruning**: Automatically select Extreme or Discrete pruning based on blocksize
+4. **Apply pruning**: Select Extreme or Discrete pruning based on blocksize
 
 ### Why This Matters
 
 The **quality of CVP approximation** depends critically on basis quality:
 
 - **Babai rounding** on LLL-reduced basis: approximation factor $\leq (2/\sqrt{3})^n$
-- **Babai rounding** on reduced basis: can be arbitrarily bad without reduction
+- **Babai rounding** on unreduced basis: can be arbitrarily bad
 - **BKZ reduction**: finds shorter vectors, enabling better CVP solutions
-
-The difference between a random basis and a BKZ-reduced basis can be exponential in the approximation quality.
 
 ---
 
@@ -55,375 +53,201 @@ The difference between a random basis and a BKZ-reduced basis can be exponential
 Given a lattice $\Lambda$ with basis $\mathbf{b}_1, \ldots, \mathbf{b}_n$, a **reduced basis** satisfies:
 
 1. **Size-reduced**: $|\mu_{i,j}| \leq \frac{1}{2}$ for all $i > j$
-2. **Lovász condition**: $\|\mathbf{b}_i^*\|^2 \geq (\delta - \mu_{i,i-1}^2) \|\mathbf{b}_{i-1}^*\|^2$
+2. **Lovasz condition**: $\|\mathbf{b}_i^*\|^2 \geq (\delta - \mu_{i,i-1}^2) \|\mathbf{b}_{i-1}^*\|^2$
 
 Where $\mu_{i,j} = \langle \mathbf{b}_i, \mathbf{b}_j^* \rangle / \|\mathbf{b}_j^*\|^2$ and $\delta \in (0.25, 1)$.
 
-### Gram-Schmidt Orthogonalization
+### Modified Gram-Schmidt (MGS)
 
-**Classical GS** (unstable):
-
-$$
-\mathbf{b}_i^* = \mathbf{b}_i - \sum_{j=1}^{i-1} \mu_{i,j} \mathbf{b}_j^*
-$$
-
-**Modified GS** (stable):
+For numerical stability, the implementation uses Modified Gram-Schmidt instead of classical Gram-Schmidt:
 
 ```
-FOR i = 1 TO n:
-    b_i* ← b_i
-    FOR j = 1 TO i-1:
-        μ[i,j] ← ⟨b_i, b_j*⟩ / ⟨b_j*, b_j*⟩
-        b_i* ← b_i* - μ[i,j] · b_j*
+For i = 0 to n-1:
+    b_i* = b_i
+    For j = 0 to i-1:
+        mu[i][j] = <b_i, b_j*> / <b_j*, b_j*>
+        b_i* = b_i* - mu[i][j] * b_j*
+    ||b_i*||^2 = <b_i*, b_i*>
 ```
 
-MGS processes the projection immediately, reducing error accumulation.
-
-### Segment LLL
-
-Standard LLL is $O(n^6 \log B)$ where $B$ is the bit length of largest entry.
-
-**Segment LLL improvement**:
-- Divide basis into segments of size $k$ (typically 32)
-- Apply parallel LLL within segments
-- Use even/odd scheduling to avoid conflicts
-- Size-reduce across boundaries
-
-**Complexity**: $O(n^4 \log n)$ with $k = \Theta(\sqrt{n})$.
-
-### BKZ (Block Korkine-Zolotarev)
-
-For blocksize $\beta$, BKZ:
-1. Enumerates shortest vectors in $\beta$-dimensional sublattices
-2. Inserts them into the basis
-3. Repeats for multiple tours
-
-**Cost**: $O(n \cdot C(\beta) \cdot \text{tours})$ where $C(\beta)$ is enumeration cost.
-
-### Hybrid Pruning Strategy
-
-**Extreme Pruning** (Chen-Nguyen, 2011):
-- For $\beta \leq 64$
-- Uses Gaussian heuristic: expected shortest length $\approx \sqrt{\beta/(2\pi e)} \cdot \det^{1/\beta}$
-- Multiple tours with increasing aggression
-- Speedup: $2^{\beta/4.4}$ to $2^{\beta/6.6}$
-
-**Discrete Pruning** (Aono-Nguyen, 2017):
-- For $\beta > 64$
-- Uses ball-box intersection volumes
-- Better asymptotic complexity for large $\beta$
-- Threshold at $\beta = 64$ based on empirical crossover
+MGS is numerically more stable than classical GS because projections are computed sequentially rather than all at once.
 
 ### Hermite Factor
 
-The **Hermite factor** $\delta$ measures basis quality:
+The Hermite factor $\delta$ measures basis quality. BKZ with blocksize $\beta$ achieves approximately:
 
-$$
-\|\mathbf{b}_1\| = \delta^n \cdot \det(\Lambda)^{1/n}
-$$
+```
+delta(beta) ≈ beta^(1/(2*beta)) * (pi*beta)^(1/(2*beta)) / (2*pi*e)^(1/(2*beta))
+```
 
-- LLL achieves $\delta \approx 1.021$ ($2^{1/n}$ approximation)
-- BKZ-40 achieves $\delta \approx 1.013$
-- BKZ-80 achieves $\delta \approx 1.009$
-- Optimal (HKZ): $\delta \approx 1$
+For $\beta = 20$: $\delta \approx 1.012$, for $\beta = 30$: $\delta \approx 1.010$.
 
 ---
 
 ## Three Reduction Algorithms
 
-### Algorithm 1: Segment LLL
+### 1. LLL Reduction
 
-**Input**: Basis $B$, segment size $k$  
-**Output**: Segment-reduced basis
+**File**: `crates/lattice/src/babai.rs`
 
-```
-Procedure SegmentLLL(B, k):
-    // Divide into segments
-    num_segments ← CEIL(n / k)
-    
-    // Even-odd parallel reduction
-    changed ← TRUE
-    WHILE changed:
-        changed ← FALSE
-        
-        // Process even-indexed segments
-        PARALLEL FOR seg_idx IN {0, 2, 4, ...}:
-            start ← seg_idx · k
-            end ← MIN(start + k, n)
-            IF LLLReduce(B, start, end) THEN
-                changed ← TRUE
-        
-        // Process odd-indexed segments
-        PARALLEL FOR seg_idx IN {1, 3, 5, ...}:
-            start ← seg_idx · k
-            end ← MIN(start + k, n)
-            IF LLLReduce(B, start, end) THEN
-                changed ← TRUE
-        
-        // Size-reduce across boundaries
-        FOR seg_idx = 0 TO num_segments-2:
-            boundary ← (seg_idx + 1) · k
-            SizeReduceBoundary(B, boundary)
-    
-    RETURN B
-END Procedure
-```
+The standard LLL algorithm implemented via the `lll_rs` crate (`bigl2` function). This is the default reduction method.
 
-### Algorithm 2: Modified Gram-Schmidt
+**When to use**: Default for most cases. Fast and produces good enough bases for small dimensions.
 
-**Input**: Basis $B$  
-**Output**: GSO data (B*, μ, ||b*||²)
+### 2. Segment LLL
+
+**File**: `crates/lattice/src/segment_lll.rs`
+
+Divides the lattice basis into segments of size $k$ and reduces them locally:
 
 ```
-Procedure ModifiedGramSchmidt(B):
-    n ← DIMENSION(B)
-    b_star ← EmptyArray(n)
-    mu ← ZeroMatrix(n, n)
-    norms_sq ← EmptyArray(n)
-    
-    FOR i = 0 TO n-1:
-        // Start with original vector
-        b_star[i] ← B[i]
-        
-        // Subtract projections onto previous GSO vectors
-        FOR j = 0 TO i-1:
-            dot_product ← DOT(B[i], b_star[j])
-            denominator ← norms_sq[j]
-            
-            IF denominator > EPSILON:
-                mu[i,j] ← dot_product / denominator
-            ELSE:
-                mu[i,j] ← 0
-            
-            // Update orthogonal vector
-            FOR coord = 0 TO DIM-1:
-                b_star[i][coord] ← b_star[i][coord] - mu[i,j] · b_star[j][coord]
-        
-        // Compute squared norm
-        norms_sq[i] ← DOT(b_star[i], b_star[i])
-    
-    RETURN GsoData {b_star, mu, norms_sq}
-END Procedure
+Segment LLL:
+1. Divide basis into segments of size k
+2. Compute local GSO for each segment
+3. Apply LLL reduction within each segment
+4. Size-reduce across segment boundaries
+5. Repeat until globally reduced
 ```
 
-### Algorithm 3: BKZ with Hybrid Pruning
+**Current limitation**: The parallel segment processing processes even-indexed segments sequentially, then odd-indexed segments sequentially. A truly parallel version would require splitting the matrix into disjoint mutable views.
 
-**Input**: Basis $B$, blocksize $\beta$, number of tours  
-**Output**: BKZ-reduced basis
+**When to use**: Optional, enabled via `BKZConfig.use_segment_lll = true`. Offers modest speedups for larger dimensions.
 
-```
-Procedure BKZWithHybridPruning(B, β, max_tours):
-    n ← DIMENSION(B)
-    tour ← 0
-    
-    WHILE tour < max_tours:
-        improved ← FALSE
-        
-        FOR start = 0 TO n-β:
-            // Extract β-dimensional sublattice
-            block ← B[start:start+β]
-            
-            // Select pruning method
-            IF β ≤ 64:
-                result ← ExtremePruningEnumerate(block)
-            ELSE:
-                result ← DiscretePruningEnumerate(block)
-            
-            // Insert short vector if found
-            IF result.short_vector ≠ NULL:
-                InsertVector(B, start, result.short_vector)
-                UpdateGSO(start, start+β)
-                improved ← TRUE
-        
-        tour ← tour + 1
-        
-        IF NOT improved:
-            BREAK  // Converged
-    
-    RETURN B
-END Procedure
-```
+### 3. BKZ with Pruning
 
-### Algorithm 4: Extreme Pruning Enumeration
+**File**: `crates/lattice/src/bkz.rs`
 
-**Input**: Block $B$, aggression factor  
-**Output**: Shortest vector or NULL
+BKZ with blocksize $\beta$ performs local enumeration on projected sublattices:
 
 ```
-Procedure ExtremePruningEnumerate(block):
-    β ← DIMENSION(block)
-    
-    // Compute Gaussian heuristic
-    volume ← PRODUCT(||b_i*|| for i in block)
-    gh_length ← (volume)^(1/β) · SQRT(β / (2·π·e))
-    
-    best_vector ← NULL
-    best_norm_sq ← ∞
-    
-    // Multiple tours with increasing radius
-    FOR tour = 0 TO num_tours-1:
-        aggression ← (tour + 1) / num_tours · max_aggression
-        radius_sq ← gh_length² · (1 + aggression)
-        
-        // Pruned enumeration
-        result ← PrunedEnumeration(block, radius_sq)
-        
-        IF result.norm_sq < best_norm_sq:
-            best_norm_sq ← result.norm_sq
-            best_vector ← result.vector
-    
-    RETURN best_vector
-END Procedure
+BKZ Algorithm:
+1. Start with LLL-reduced basis
+2. For each tour:
+   For each block [k, k+beta-1]:
+     - Compute GSO of projected block
+     - Enumerate shortest vector in block
+     - Insert found vector into basis
+   Check early abort condition
 ```
+
+**Pruning strategies** (file: `crates/lattice/src/pruning.rs`):
+- **Extreme Pruning** (Chen-Nguyen, 2011): For $\beta \leq 64$, aggressive radii based on Gaussian heuristic
+- **Discrete Pruning** (Aono-Nguyen, 2017): For $\beta > 64$, lattice partitions with ball-box intersections
+- **Auto**: Selects based on blocksize threshold at $\beta = 64$
+
+**When to use**: Enable via `Config.use_bkz = true`. Better basis quality but significantly slower. Progressive BKZ (`Config.bkz_progressive = true`) starts with small blocksize and gradually increases, which is often faster than starting directly with the target blocksize.
 
 ---
 
 ## Detailed Algorithm Specifications
 
-### LLL Reduction Step
+### Gram-Schmidt Orthogonalization
 
-```
-Procedure LLLReduce(B, start, end):
-    changed ← FALSE
-    
-    FOR i = start+1 TO end-1:
-        // Size reduction
-        FOR j = start TO i-1:
-            IF |μ[i,j]| > 0.5:
-                q ← ROUND(μ[i,j])
-                B[i] ← B[i] - q · B[j]
-                changed ← TRUE
-        
-        // Lovász condition
-        IF ||b_i*||² < (δ - μ[i,i-1]²) · ||b_{i-1}*||²:
-            SWAP(B[i], B[i-1])
-            UPDATE_GSO(i-1, i)
-            changed ← TRUE
-    
-    RETURN changed
-END Procedure
-```
+**Function**: `compute_gram_schmidt(basis: &Matrix<BigVector>) -> GsoData`
 
-### Pruned Enumeration
+**File**: `crates/lattice/src/babai.rs`
 
-```
-Procedure PrunedEnumeration(block, radius_sq):
-    β ← DIMENSION(block)
-    stack ← [(β, 0, [0,...,0])]  // (level, partial_norm, coeffs)
-    best ← NULL
-    
-    WHILE stack NOT EMPTY:
-        (level, partial_norm, coeffs) ← stack.POP()
-        
-        IF level = 0:
-            // Full coefficient vector
-            IF coeffs ≠ ZERO:
-                norm_sq ← COMPUTE_NORM_SQ(block, coeffs)
-                IF norm_sq < radius_sq AND (best = NULL OR norm_sq < best.norm_sq):
-                    best ← {vector: coeffs, norm_sq: norm_sq}
-            CONTINUE
-        
-        // Compute bounds for this level
-        i ← level - 1
-        center ← COMPUTE_CENTER(coeffs, i)
-        width ← SQRT((radius_sq - partial_norm) / ||b_i*||²)
-        
-        min_c ← CEIL(center - width)
-        max_c ← FLOOR(center + width)
-        
-        // Add children to stack
-        FOR c = min_c TO max_c:
-            delta ← c - center
-            new_partial ← partial_norm + delta² · ||b_i*||²
-            new_coeffs ← coeffs.CLONE()
-            new_coeffs[i] ← c
-            stack.PUSH((level-1, new_partial, new_coeffs))
-    
-    RETURN best
-END Procedure
-```
+Returns:
+- `orthogonal_basis`: GSO vectors $\mathbf{b}_i^*$ as `Vec<Vec<f64>>`
+- `gram_schmidt_coeffs`: Coefficients $\mu_{i,j}$ as `Vec<Vec<f64>>`
+- `squared_norms`: $\|\mathbf{b}_j^*\|^2$ as `Vec<f64>`
+
+### Babai Rounding
+
+**Function**: `babai_rounding(target, gso, basis) -> BabaiResult`
+
+**File**: `crates/lattice/src/babai.rs`
+
+Given target $\mathbf{t}$ and GSO data:
+1. Compute fractional projections: $\mu_j = \langle \mathbf{t}, \mathbf{b}_j^* \rangle / \|\mathbf{b}_j^*\|^2$
+2. Round: $c_j = \text{round}(\mu_j)$
+3. Build closest lattice point: $\mathbf{b}_{\text{cl}} = \sum_j c_j \mathbf{b}_j$
+4. Compute sign factors: $\kappa_j = \text{sign}(\mu_j - c_j)$
+
+Returns `BabaiResult` containing the closest lattice point, coefficients, fractional projections, and sign factors.
+
+### BKZ Reduction
+
+**Function**: `bkz_reduce(basis, config) -> BKZStats`
+
+**File**: `crates/lattice/src/bkz.rs`
+
+**Configuration** (`BKZConfig`):
+- `blocksize`: $\beta$ (larger = better quality, exponentially slower)
+- `max_tours`: Maximum BKZ tours (default 100)
+- `early_abort_threshold`: Stop if relative improvement < threshold
+- `delta`, `eta`: LLL parameters
+- `use_segment_lll`: Use Segment LLL for initial reduction
+- `enable_pruning`: Use pruning for enumeration
+- `pruning_method`: Extreme, Discrete, or Auto
+
+**Early abort**: If the relative improvement in basis potential falls below `early_abort_threshold`, the algorithm terminates early.
+
+**Progressive BKZ**: `progressive_bkz_reduce(basis, target_blocksize)` generates a sequence of configs starting from blocksize 10 and increasing by 5 until reaching the target.
 
 ---
 
 ## Data Structures
 
-### GsoData
+### `GsoData`
+
+**File**: `crates/lattice/src/babai.rs`
 
 ```rust
-/// Gram-Schmidt Orthogonalization data for a lattice basis.
-#[derive(Debug, Clone)]
 pub struct GsoData {
-    /// GSO vectors b_i* (as f64 for numerical efficiency).
-    pub orthogonal_basis: Vec<Vec<f64>>,
-    
-    /// Gram-Schmidt coefficients μ_{i,j}.
-    pub gram_schmidt_coeffs: Vec<Vec<f64>,
-    
-    /// Squared norms ||b_j*||².
-    pub squared_norms: Vec<f64>,
-}
-
-impl GsoData {
-    /// Compute orthogonality defect.
-    pub fn orthogonality_defect(&self) -> f64 {
-        let n = self.dimension();
-        let mut max_defect: f64 = 0.0;
-        
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let dot_product: f64 = self.orthogonal_basis[i]
-                    .iter()
-                    .zip(self.orthogonal_basis[j].iter())
-                    .map(|(a, b)| a * b)
-                    .sum();
-                max_defect = max_defect.max(dot_product.abs());
-            }
-        }
-        max_defect
-    }
+    pub orthogonal_basis: Vec<Vec<f64>>,      // GSO vectors b_i*
+    pub gram_schmidt_coeffs: Vec<Vec<f64>>, // mu[i][j]
+    pub squared_norms: Vec<f64>,           // ||b_j*||^2
 }
 ```
 
-### BKZ Configuration
+### `BabaiResult`
+
+**File**: `crates/lattice/src/babai.rs`
 
 ```rust
-/// Configuration for BKZ reduction.
+pub struct BabaiResult {
+    pub closest_lattice_point: Vec<Integer>,   // b_cl
+    pub coefficients: Vec<i64>,                // c_j
+    pub fractional_projections: Vec<f64>,   // mu_j
+    pub sign_factors: Vec<i64>,             // kappa_j
+    pub squared_distance: f64,               // ||t - b_cl||^2
+}
+```
+
+### `BKZConfig`
+
+**File**: `crates/lattice/src/bkz.rs`
+
+```rust
 pub struct BKZConfig {
-    /// Block size for BKZ.
-    pub block_size: usize,
-    /// Number of BKZ tours.
-    pub num_tours: usize,
-    /// LLL reduction parameter delta.
-    pub delta: f64,
-    /// LLL reduction parameter eta.
-    pub eta: f64,
-    /// Enable Segment LLL before BKZ.
+    pub blocksize: usize,
+    pub max_tours: usize,
+    pub early_abort_threshold: f64,
+    pub delta: f64,                  // LLL delta (default 0.99)
+    pub eta: f64,                    // LLL eta (default 0.501)
     pub use_segment_lll: bool,
-    /// Segment size for initial LLL.
     pub segment_size: usize,
-    /// Pruning method selection.
+    pub enable_pruning: bool,
+    pub pruning_param: f64,
     pub pruning_method: PruningMethod,
-}
-
-pub enum PruningMethod {
-    Extreme,    // Chen-Nguyen, for β ≤ 64
-    Discrete,   // Aono-Nguyen, for β > 64
-    Auto,       // Select based on blocksize
+    pub num_tours: usize,
+    pub pruning_levels: usize,
+    pub success_probability: f64,
 }
 ```
 
-### Segment LLL Configuration
+### `BKZStats`
+
+**File**: `crates/lattice/src/bkz.rs`
 
 ```rust
-pub struct SegmentLLLConfig {
-    /// Size of each segment.
-    pub segment_size: usize,
-    /// LLL parameter delta.
-    pub delta: f64,
-    /// LLL parameter eta.
-    pub eta: f64,
-    /// Enable parallel processing.
-    pub parallel: bool,
+pub struct BKZStats {
+    pub tours_completed: usize,
+    pub successful_insertions: usize,
+    pub elapsed_time: f64,
+    pub avg_ratio: f64,
+    pub early_aborted: bool,
 }
 ```
 
@@ -431,246 +255,87 @@ pub struct SegmentLLLConfig {
 
 ## Implementation Details
 
-### Numerical Stability
+### Numerical Precision
 
-**Key considerations**:
+All GSO computations use `f64`. For typical lattice dimensions ($n \leq 20$) and moderate coefficient sizes, this provides sufficient precision. The implementation uses `EPSILON = 1e-12` for floating-point comparisons.
 
-1. **Modified Gram-Schmidt**: Use MGS instead of classical GS to reduce error accumulation from $O(n^2 \epsilon)$ to $O(n \epsilon)$.
+### Insertion Logic
 
-2. **Epsilon guarding**: Check denominators against `EPSILON = 1e-12` before division:
-   ```rust
-   let mu_ij = if denominator > EPSILON {
-       dot_product / denominator
-   } else {
-       0.0
-   };
-   ```
+When BKZ finds a short vector in a projected block, it inserts it into the basis at position $k$. The insertion is accepted only if:
+- The coefficient for the current basis vector is non-zero (ensures linear independence)
+- The candidate squared norm is strictly smaller than `delta * current_norm_sq`
 
-3. **Clamping**: Clamp small negative norms to zero:
-   ```rust
-   let norm_squared = norm_squared.max(0.0);
-   ```
+### Potential Computation
 
-### Parallelization
+The potential used for early abort is:
 
-**Segment LLL parallelization**:
-
-```rust
-// Even-odd parallel processing
-use rayon::prelude::*;
-
-// Process even segments in parallel
-even_segments.par_iter().for_each(|seg| {
-    lll_reduce_segment(basis, seg.start, seg.end);
-});
-
-// Process odd segments in parallel
-odd_segments.par_iter().for_each(|seg| {
-    lll_reduce_segment(basis, seg.start, seg.end);
-});
+```
+potential = sum_j ln(||b_j*||^2 + epsilon)
 ```
 
-**Load balancing**:
-- Each segment has equal size (except possibly last)
-- Even/odd separation prevents data races
-- Size reduction across boundaries is sequential
-
-### Memory Layout
-
-**GSO data storage**:
-- `orthogonal_basis`: `Vec<Vec<f64>>` (n vectors of length dim)
-- `gram_schmidt_coeffs`: `Vec<Vec<f64>>` (triangular matrix)
-- `squared_norms`: `Vec<f64>` (n values)
-
-**Cache optimization**:
-- Store GSO vectors contiguously
-- Preallocate buffers to avoid reallocation
-- Use stack buffers for temporary vectors
+This is a standard measure of basis quality; smaller potential indicates better reduction.
 
 ---
 
 ## Edge Cases and Validation
 
-### Input Validation
+### Empty Basis
 
-| Condition | Check | Action |
-|-----------|-------|--------|
-| Empty basis | `n > 0` | Error |
-| Zero vectors | `||b_i|| > 0` | Skip or error |
-| Singular basis | Rank check | Warning, proceed with care |
-| Numerical overflow | Finite checks | Clamp or error |
+If `basis.dimensions().0 == 0` or `blocksize < 2`, BKZ returns default stats without modification.
 
-### Runtime Edge Cases
+### Non-Finite Values
 
-**Case: Near-zero GSO norm**
-- **Issue**: Linearly dependent vectors cause division by zero
-- **Resolution**: Skip size reduction, set μ = 0
+If any basis element converts to non-finite `f64`, the insertion is rejected. This prevents NaN/Inf propagation.
 
-**Case: BKZ enumeration explosion**
-- **Issue**: Too many nodes to enumerate
-- **Resolution**: Set max_nodes limit, use pruned enumeration
+### Small Blocks
 
-**Case: Non-convergence**
-- **Issue**: LLL may not converge for pathological inputs
-- **Resolution**: Set max_iterations, check progress
-
-### Debug Assertions
-
-```rust
-debug_assert!(
-    dims.0 > 0 && dims.1 > 0,
-    "Gram-Schmidt: basis must be non-empty"
-);
-
-debug_assert!(
-    denominator > EPSILON,
-    "Gram-Schmidt: near-zero denominator at ({}, {})",
-    i, j
-);
-
-debug_assert!(
-    norm_squared >= -EPSILON,
-    "Gram-Schmidt: computed negative squared norm"
-);
-```
-
----
-
-## Example Walkthrough
-
-### Example: Reducing a 4-dimensional Basis
-
-**Input basis** $B$:
-```
-[2  0  0  0]
-[0  1  0  0]
-[0  0  1  0]
-[0  0  0  1]
-[2  3  5  4]
-```
-
-**Step 1: Gram-Schmidt Orthogonalization**
-
-```
-b_0* = [2, 0, 0, 0, 2]
-||b_0*||² = 4 + 0 + 0 + 0 + 4 = 8
-
-b_1* = [0, 1, 0, 0, 3]
-μ[1,0] = ⟨b_1, b_0*⟩ / ||b_0*||² = (0+0+0+0+6) / 8 = 0.75
-b_1* = b_1 - 0.75·b_0* = [0, 1, 0, 0, 3] - [1.5, 0, 0, 0, 1.5]
-     = [-1.5, 1, 0, 0, 1.5]
-||b_1*||² = 2.25 + 1 + 0 + 0 + 2.25 = 5.5
-
-// Continue for all vectors...
-```
-
-**Step 2: LLL Size Reduction**
-
-```
-// Check μ[1,0] = 0.75
-q = round(0.75) = 1
-b_1 ← b_1 - 1·b_0
-
-// Updated basis...
-```
-
-**Step 3: Lovász Condition Check**
-
-```
-// For δ = 0.99
-// Check if ||b_1*||² ≥ (δ - μ²)·||b_0*||²
-// If not satisfied, swap and repeat
-```
-
-**Step 4: BKZ Enumeration (β = 4)**
-
-```
-// Since β ≤ 64, use Extreme Pruning
-// Gaussian heuristic length: sqrt(4/(2πe)) · det^(1/4)
-// Enumerate with pruning radius...
-
-// Suppose we find shorter vector v = [1, 1, 0, -1, 0]
-// Insert into basis...
-```
-
-**Output**: Reduced basis $B'$ with shorter, more orthogonal vectors
+For blocks with $\beta \leq 3$, full enumeration tries all coefficient combinations in $[-2, 2]$. For larger blocks, a greedy branch-and-bound approach tries single vectors and pairs.
 
 ---
 
 ## Complexity Analysis
 
-### Time Complexity
+| Algorithm | Time | Space |
+|-----------|------|-------|
+| LLL | $O(n^6 \log B)$ | $O(n^2)$ |
+| Segment LLL | $O(n^4 \log n \log B)$ | $O(n^2)$ |
+| BKZ-$\beta$ | $O(n \cdot 2^{\beta/4.4})$ | $O(n^2)$ |
+| Gram-Schmidt | $O(n^2 d)$ | $O(n d)$ |
+| Babai Rounding | $O(n d)$ | $O(d)$ |
 
-| Algorithm | Complexity | Notes |
-|-----------|-----------|-------|
-| Modified Gram-Schmidt | $O(n^2 \cdot d)$ | $d$ = vector dimension |
-| Standard LLL | $O(n^6 \log B)$ | $B$ = bit length |
-| Segment LLL | $O(n^4 \log n)$ | With parallelism |
-| BKZ enumeration | $O(n \cdot 2^{\beta/4.4})$ | Extreme pruning, β ≤ 64 |
-| BKZ enumeration | $O(n \cdot \exp(O(\beta)))$ | Discrete pruning, β > 64 |
+Where $n$ = lattice dimension, $d$ = vector dimension ($n+1$), $B$ = input bit size.
 
-### Space Complexity
+---
 
-| Component | Space | Notes |
-|-----------|-------|-------|
-| Basis matrix | $O(n \cdot d)$ | Modified in-place |
-| GSO vectors | $O(n \cdot d)$ | Orthogonal basis |
-| GSO coefficients | $O(n^2)$ | Triangular matrix |
-| BKZ state | $O(n \cdot \beta)$ | Current block |
+## Testing
 
-### Dominant Costs
+Tests span `crates/lattice/src/babai.rs` (12 tests), `crates/lattice/src/bkz.rs` (6 tests), `crates/lattice/src/segment_lll.rs` (4 tests), and `crates/lattice/src/pruning.rs` (4 tests).
 
-- **Small β (≤ 40)**: GSO computation dominates at $O(n^2 d)$
-- **Medium β (40-64)**: BKZ enumeration with Extreme Pruning
-- **Large β (> 64)**: Discrete Pruning is required, cost grows rapidly
+Key tests:
+- `test_babai_rounding_identity` — on identity basis
+- `test_babai_rounding_2d` — simple 2D case
+- `test_gram_schmidt_identity` — GSO on identity basis
+- `test_bkz_config_default` — default config values
+- `test_progressive_configs` — progressive blocksize generation
+- `test_estimated_hermite_factor` — monotonicity with blocksize
+- `test_bkz_on_identity` — BKZ on identity basis
+- `test_compute_potential` — potential is finite
+- `test_compute_avg_ratio` — ratio = 1 for identity
+- `test_segment_lll_identity` — Segment LLL on identity
+- `test_pruning_extreme_small` — extreme pruning on small dimension
+- `test_pruning_discrete_large` — discrete pruning with large bounds
 
 ---
 
 ## Connection to Stage 3
 
-### What Stage 2 Produces
+The outputs of Stage 2 feed directly into Stage 3:
+- `GsoData` is passed to Babai rounding and Klein sampling
+- `BabaiResult` provides the closest lattice point and sign factors for Hamiltonian construction
+- The reduced basis vectors are used to define the CVP Hamiltonian's correction directions
 
-Stage 2 outputs:
-1. **Reduced basis** $B'$ (shorter, more orthogonal)
-2. **GSO data** ($\mathbf{b}_i^*$, $\mu_{i,j}$, $\|\mathbf{b}_i^*\|^2$)
-3. **BKZ statistics** (tours completed, improvements made)
-
-### What Stage 3 Expects
-
-Stage 3 (CVP Baseline) requires:
-- Reduced basis $B'$ (for lattice point reconstruction)
-- GSO data (for nearest-plane algorithm)
-- Target vector $\mathbf{t}$ (from Stage 1)
-
-### Data Flow
-
-```
-Stage 2 Output                              Stage 3 Input
-├─ reduced_basis: Matrix<BigVector>    →    ├─ basis (reference)
-├─ gso: GsoData                          →    ├─ gso (reference)
-├─ stats: ReductionStats                 →    (stored for analysis)
-└─ hermite_factor: f64                   →    └─ (stored for monitoring)
-```
-
-### Critical Invariants Handed Off
-
-1. **Size-reduced**: $|\mu_{i,j}| \leq 0.5$ for all $i > j$
-2. **GSO validity**: $\mathbf{b}_i^*$ orthogonal to all previous $\mathbf{b}_j^*$
-3. **Positive norms**: $\|\mathbf{b}_i^*\|^2 > 0$ for all $i$
+The `babai_point`, `fractional_projections`, `coefficients`, and `basis_int` from Stage 2 are the inputs to `CvpHamiltonian::new` in Stage 4.
 
 ---
 
-## Summary
-
-Stage 2 transforms the raw Schnorr lattice into a well-reduced basis suitable for efficient CVP approximation. This stage:
-
-- **Improves basis quality**: Through Segment LLL and BKZ enumeration
-- **Provides geometric data**: Gram-Schmidt orthogonalization enables nearest-plane algorithms
-- **Balances speed and quality**: Hybrid pruning automatically selects optimal strategy
-- **Enables accurate CVP**: Reduced basis approximation factor is exponentially better
-
-The key insight is that **geometric structure determines approximation quality**. A well-reduced basis makes the difference between exponential and polynomial CVP approximation.
-
----
-
-*Next: [Stage 3: Initial CVP Baseline](./03-stage-3-cvp-baseline.md)*
+*Next: [Stage 3: CVP Baseline](./03-stage-3-cvp-baseline.md)*

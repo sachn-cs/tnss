@@ -1,6 +1,6 @@
 # Stage 6: Smoothness Verification
 
-## Trial Division, Pollard Rho, and Relation Validation
+## Trial Division, Smooth Relation Extraction, and Validation
 
 ---
 
@@ -8,13 +8,13 @@
 
 1. [Purpose and Responsibility](#purpose-and-responsibility)
 2. [Mathematical Foundation](#mathematical-foundation)
-3. [Smooth Relation Extraction](#smooth-relation-extraction)
-4. [Trial Division](#trial-division)
-5. [Pollard Rho Factorization](#pollard-rho-factorization)
+3. [Smoothness Testing](#smoothness-testing)
+4. [Smooth Relation Construction](#smooth-relation-construction)
+5. [Data Structures](#data-structures)
 6. [Implementation Details](#implementation-details)
 7. [Edge Cases and Validation](#edge-cases-and-validation)
-8. [Example Walkthrough](#example-walkthrough)
-9. [Complexity Analysis](#complexity-analysis)
+8. [Complexity Analysis](#complexity-analysis)
+9. [Testing](#testing)
 10. [Connection to Stage 7](#connection-to-stage-7)
 
 ---
@@ -23,705 +23,271 @@
 
 ### What This Stage Does
 
-Stage 6 validates that the coefficient vectors found in Stage 5 actually correspond to **smooth relations** over the factor base. This is the critical verification step that ensures only usable relations proceed to the linear algebra phase.
+Stage 6 verifies that sampled lattice points correspond to **smooth relations** — pairs $(u, w)$ where both $u$ and $w$ factor completely over the factor base.
 
 ### Key Responsibilities
 
-1. **Extract candidate relations**: Convert optimized coefficient vectors to multiplicative relations
-2. **Compute trial division**: Check smoothness over the factor base using division
-3. **Apply Pollard Rho**: Factor any remaining co-factors that resist trial division
-4. **Validate relations**: Confirm both sides of the relation are smooth
-5. **Build exponent vectors**: Create binary exponent vectors for Stage 7
+1. **Extract coefficients**: Divide lattice point coordinates by diagonal weights
+2. **Build $u$ and $v$**: Compute $u = \prod_{e_j > 0} p_j^{e_j}$ and $v = \prod_{e_j < 0} p_j^{-e_j}$
+3. **Compute $w$**: $w = u - v \cdot N$
+4. **Test smoothness**: Trial division over the factor base
+5. **Store relations**: Collect valid `SrPair` objects
 
 ### Why This Matters
 
-**The Smoothness Bottleneck:**
-
-Not all short lattice vectors correspond to smooth relations. Stage 6 filters out:
-- Vectors that produced relations with large prime factors
-- Numerical artifacts from the optimization
-- Relations where only one side is smooth
-
-**Why Verification is Necessary:**
-
-The tensor network optimization approximates the CVP solution, but the resulting coefficient vector $\mathbf{c}$ might produce integers with large prime factors. We must verify:
-
-$$
-u = \prod_{c_j > 0} p_j^{c_j}, \quad \omega = \prod_{c_j < 0} p_j^{-c_j}
-$$
-
-Both $\nu$ and $\omega$ must factor completely over the factor base.
+Smooth relations are the **currency** of factorization. Without enough relations, Stage 7 (linear algebra) cannot extract factors. The quality of Stage 5 sampling directly impacts how many relations are found per CVP instance.
 
 ---
 
 ## Mathematical Foundation
 
-### Smooth Relations
+### Smoothness
 
-A **smooth relation** over factor base $P = \{p_1, \ldots, p_{\pi_2}\}$ is a pair $(u, w)$ such that:
+A number $x$ is **B-smooth** (or smooth over basis $P$) if all its prime factors are in $P$.
 
-1. $w \equiv u \pmod{N}$ (congruence condition)
-2. Both $u$ and $w$ are $P$-smooth (factor completely over $P$)
+Given basis $P = \{p_1, p_2, \ldots, p_{\pi_2}\}$:
 
-**From Coefficients to Relations:**
+$$x = \pm \prod_{i=1}^{\pi_2} p_i^{e_i}$$
 
-Given coefficient vector $\mathbf{c} = (c_0, \ldots, c_{n-1})$:
+where $e_i \geq 0$.
 
-$$
-u = \prod_{j: c_j > 0} p_j^{c_j}, \quad \omega = \prod_{j: c_j < 0} p_j^{-c_j}
-$$
+### Smooth Relation Pair (SrPair)
 
-The relation is:
+A pair $(u, w)$ is a smooth relation if:
+- $w = u - v \cdot N$ for some integer $v$
+- Both $u$ and $w$ are smooth over $P$
 
-$$
-u \equiv \omega \cdot k \pmod{N} \quad \text{for some small } k
-$$
+The coefficients $e_j$ over the first $n$ primes (not $\pi_2$) define:
+- $u = \prod_{e_j > 0} p_j^{e_j}$
+- $v = \prod_{e_j < 0} p_j^{-e_j}$
 
-### Trial Division
+### Exponent Vectors
 
-**Algorithm:**
+For GF(2) linear algebra, we need exponent vectors modulo 2:
 
-For integer $m$ and factor base $P$:
+$$e_u = (\text{sign}(u), e_1, e_2, \ldots, e_{\pi_2}) \pmod{2}$$
+$$e_w = (\text{sign}(w), e_1, e_2, \ldots, e_{\pi_2}) \pmod{2}$$
 
-```
-Procedure TrialDivide(m, P):
-    factors ← EmptyMap()
-    remainder ← |m|
-    
-    FOR p IN P:
-        IF p² > remainder THEN BREAK
-        
-        count ← 0
-        WHILE remainder MOD p = 0:
-            remainder ← remainder / p
-            count ← count + 1
-        
-        IF count > 0:
-            factors[p] ← count
-    
-    // If remainder = 1, m is P-smooth
-    RETURN (factors, remainder)
-```
-
-**Complexity:** $O(|P| \cdot \log m)$ divisions.
-
-### Pollard Rho Factorization
-
-When trial division leaves a composite remainder $r > 1$:
-
-**Algorithm (Brent's variant):**
-
-```
-Procedure PollardRho(n, max_iterations=100000):
-    IF n IS PRIME THEN RETURN n
-    
-    FOR seed IN {1, 2, 3, ...}:
-        x ← seed
-        y ← seed
-        c ← 1
-        
-        FOR i = 1 TO max_iterations:
-            // f(x) = x² + c (mod n)
-            x ← (x² + c) MOD n
-            y ← (y² + c) MOD n
-            y ← (y² + c) MOD n
-            
-            d ← GCD(|x - y|, n)
-            
-            IF d = n THEN BREAK (retry with new c)
-            IF d > 1 THEN RETURN d
-    
-    RETURN FAILURE
-```
-
-**Expected iterations:** $O(\sqrt{p})$ where $p$ is smallest prime factor.
-
-### Combining Methods
-
-**Hybrid Strategy:**
-
-1. **Trial division first:** Removes all small factors efficiently
-2. **Pollard Rho second:** Factors any remaining composite co-factors
-3. **Smoothness check:** Verify all prime factors are in $P$
+The combined vector $e_u + e_w \pmod{2}$ is used to build the GF(2) matrix in Stage 7.
 
 ---
 
-## Smooth Relation Extraction
+## Smoothness Testing
 
-### From Coefficients to Integers
+**Function**: `factor_smooth(n, basis) -> Option<Vec<u32>>`
 
-**Algorithm:**
+**File**: `crates/algebra/src/smoothness.rs`
 
-```
-Algorithm: ExtractRelation
-Input:
-    coeffs: Coefficient vector [c_0, ..., c_{n-1}]
-    primes: Factor base [p_0, ..., p_{π_2-1}]
-    N: Semiprime to factor
+### Algorithm
 
-Output:
-    relation: SmoothRelation or None
+1. Handle sign:
+   - If $n = 0$: return all-zero exponents
+   - If $n < 0$: set sign bit = 1, $n = |n|$
+2. For each prime $p_i$ in basis:
+   - If $n < p_i$: break (remaining primes are too large)
+   - While $n$ divisible by $p_i$:
+     - $n \leftarrow n / p_i$
+     - $e_i \leftarrow e_i + 1$
+     - If $n = 1$: return exponents
+3. If $n = 1$: return exponents (smooth)
+4. Otherwise: return `None` (not smooth)
 
-Procedure ExtractRelation(coeffs, primes, N):
-    // Separate positive and negative coefficients
-    pos_coeffs ← {j: coeffs[j] > 0}
-    neg_coeffs ← {j: coeffs[j] < 0}
-    
-    // Compute u = ∏_{j: c_j > 0} p_j^{c_j}
-    u ← 1
-    FOR j IN pos_coeffs:
-        u ← u · primes[j]^{coeffs[j]}
-    
-    // Compute w = ∏_{j: c_j < 0} p_j^{-c_j}
-    w ← 1
-    FOR j IN neg_coeffs:
-        w ← w · primes[j]^{-coeffs[j]}
-    
-    // Verify congruence
-    IF (u - w) MOD N ≠ 0:
-        // Check if u ≡ w·k (mod N) for small k
-        k ← (u · w^{-1}) MOD N
-        IF k > SMOOTHNESS_THRESHOLD:
-            RETURN None
-    
-    RETURN (u, w, k)
+**Sign-bit encoding**:
+- `exponents[0]`: 0 = positive, 1 = negative
+- `exponents[1..]`: prime exponents for each basis prime
+
+### Smoothness Basis
+
+**Struct**: `SmoothnessBasis`
+
+**File**: `crates/algebra/src/smoothness.rs`
+
+```rust
+pub struct SmoothnessBasis {
+    pub primes: Vec<u64>,           // First pi_2 primes
+    primes_int: Vec<Integer>,   // Precomputed Integer versions
+    len: usize,
+}
 ```
 
-### Exponent Vector Construction
-
-For linear algebra in Stage 7, each relation produces an **exponent vector**:
-
-```
-ExponentVector(u, w, primes):
-    vec ← ZeroVector(π_2)
-    
-    // Factor u and w over primes
-    FOR (p, exp) IN Factor(u, primes):
-        idx ← IndexOf(p, primes)
-        vec[idx] ← vec[idx] + exp
-    
-    FOR (p, exp) IN Factor(w, primes):
-        idx ← IndexOf(p, primes)
-        vec[idx] ← vec[idx] - exp
-    
-    // Reduce mod 2 for linear algebra
-    RETURN vec MOD 2
-```
+**Construction**: `SmoothnessBasis::new(pi_2)` calls `first_n_primes(pi_2)` and precomputes `Integer` versions of each prime for efficient division.
 
 ---
 
-## Trial Division
+## Smooth Relation Construction
 
-### Optimized Trial Division
+**Function**: `try_build_sr_pair(e, primes, n, basis) -> Option<SrPair>`
 
-```
-Algorithm: OptimizedTrialDivision
-Input:
-    m: Integer to factor
-    primes: Factor base
-    bound: Trial division bound (optional)
+**File**: `crates/algebra/src/smoothness.rs`
 
-Output:
-    factors: Map {prime → exponent}
-    remainder: Unfactored portion
+### Algorithm
 
-Procedure OptimizedTrialDivision(m, primes, bound):
-    IF bound IS None:
-        bound ← SQRT(|m|)
-    
-    factors ← EmptyMap()
-    remainder ← ABS(m)
-    
-    FOR p IN primes WHERE p ≤ bound:
-        IF p² > remainder THEN BREAK
-        
-        // Quick divisibility check
-        IF remainder MOD p ≠ 0 THEN CONTINUE
-        
-        // Count exponent
-        exp ← 0
-        temp ← remainder
-        WHILE temp MOD p = 0:
-            temp ← temp / p
-            exp ← exp + 1
-        
-        factors[p] ← exp
-        remainder ← temp
-    
-    RETURN (factors, remainder)
-```
+1. **Build $u$ and $v$**:
+   ```
+   u = product of p_j^e_j for e_j > 0
+   v = product of p_j^(-e_j) for e_j < 0
+   ```
+2. **Compute $w$**: $w = u - v \cdot N$
+3. **Check non-triviality**: If $w = 0$, reject (trivial relation)
+4. **Test smoothness**:
+   - `e_u = factor_smooth(&u, basis)?`
+   - `e_w = factor_smooth(&w, basis)?`
+5. **Return** `SrPair { u, w, e_u, e_w }`
 
-### Smoothness Verification
+### Coefficient Extraction
 
-```
-Algorithm: VerifySmoothness
-Input:
-    m: Integer to test
-    primes: Factor base
-    use_pollard_rho: Boolean
+**File**: `crates/algebra/src/factor.rs` (`process_sample`)
 
-Output:
-    is_smooth: Boolean
-    factorization: Complete factorization or None
+Given a bitstring configuration:
+1. Compute lattice point: `point = hamiltonian.compute_lattice_point(bits, &babai_point)`
+2. Extract coefficients: `e_j = point[j] / diagonal_weights[j]`
+3. Verify last coordinate consistency:
+   ```
+   sum_j e_j * last_row_values[j] == point[dimension]
+   ```
+4. If consistent, call `try_build_sr_pair`
 
-Procedure VerifySmoothness(m, primes, use_pollard_rho):
-    // Phase 1: Trial division
-    (factors, remainder) ← TrialDivide(m, primes)
-    
-    // Phase 2: Check if completely factored
-    IF remainder = 1:
-        RETURN (True, factors)
-    
-    // Phase 3: Pollard Rho for remaining factor
-    IF use_pollard_rho AND NOT IsPrime(remainder):
-        sub_factors ← FactorWithPollardRho(remainder, primes)
-        
-        IF sub_factors IS NOT None:
-            MERGE(factors, sub_factors)
-            RETURN (True, factors)
-    
-    // Not smooth over factor base
-    RETURN (False, None)
-```
+### Relation Deduplication
+
+In the main pipeline (`factorize` in `factor.rs`):
+- A `HashSet<(Integer, Integer)>` tracks seen `(u, w)` pairs
+- Only new relations are added to the accumulated list
 
 ---
 
-## Pollard Rho Factorization
+## Data Structures
 
-### Brent's Algorithm
+### `SrPair`
 
-Brent's variant uses a different cycle detection that's more efficient:
+**File**: `crates/algebra/src/smoothness.rs`
 
-```
-Algorithm: BrentPollardRho
-Input:
-    n: Composite number to factor
-    max_iterations: Maximum iterations (default 100000)
-
-Output:
-    factor: A non-trivial factor of n, or None
-
-Procedure BrentPollardRho(n, max_iterations):
-    IF n MOD 2 = 0 THEN RETURN 2
-    IF IsPrime(n) THEN RETURN n
-    
-    FOR c IN {1, 2, 3, ... 10}:
-        // Random polynomial: f(x) = x² + c
-        y ← 2  // Initial value
-        x ← 2
-        power ← 1
-        lam ← 1  // Cycle length
-        
-        FOR iter = 0 TO max_iterations:
-            IF iter = power:
-                y ← x
-                power ← power · 2
-                lam ← 0
-            
-            x ← (x² + c) MOD n
-            lam ← lam + 1
-            
-            d ← GCD(|x - y|, n)
-            
-            IF d > 1 AND d < n:
-                RETURN d
-            IF d = n:
-                BREAK  // Failed, try new c
-    
-    RETURN None
+```rust
+pub struct SrPair {
+    pub u: Integer,                // Product of positive-exponent primes
+    pub w: Integer,                // u - v*N
+    pub e_u: Vec<u32>,            // Exponent vector of u (with sign bit)
+    pub e_w: Vec<u32>,            // Exponent vector of w (with sign bit)
+}
 ```
 
-### Complete Factorization with Pollard Rho
+### `SmoothnessBasis`
 
+```rust
+pub struct SmoothnessBasis {
+    pub primes: Vec<u64>,
+    primes_int: Vec<Integer>,
+    len: usize,
+}
 ```
-Algorithm: FactorCompletely
-Input:
-    n: Integer to factor
-    primes: Factor base (for trial division)
 
-Output:
-    factors: Map of {prime → exponent}
-
-Procedure FactorCompletely(n, primes):
-    factors ← EmptyMap()
-    to_factor ← [n]
-    
-    WHILE to_factor NOT EMPTY:
-        m ← to_factor.POP()
-        
-        // Trial division first
-        (trial_factors, remainder) ← TrialDivide(m, primes)
-        MERGE(factors, trial_factors)
-        
-        IF remainder = 1 THEN CONTINUE
-        
-        IF IsPrime(remainder):
-            IF remainder IN primes:
-                factors[remainder] ← factors.GET(remainder, 0) + 1
-            ELSE:
-                // Prime not in factor base - not smooth!
-                RETURN None
-        ELSE:
-            // Composite - factor with Pollard Rho
-            d ← BrentPollardRho(remainder)
-            IF d IS None:
-                RETURN None  // Factorization failed
-            
-            to_factor.PUSH(d)
-            to_factor.PUSH(remainder / d)
-    
-    RETURN factors
-```
+**Methods**:
+- `new(pi_2) -> Self`
+- `len() -> usize`
+- `is_empty() -> bool`
+- `get(index) -> Option<u64>`
 
 ---
 
 ## Implementation Details
 
-### Data Structures
+### Parallel Smoothness Testing
 
-```rust
-/// A validated smooth relation.
-#[derive(Debug, Clone)]
-pub struct SmoothRelation {
-    /// The u value: ∏_{c_j > 0} p_j^{c_j}
-    pub u: Integer,
-    /// The w value: ∏_{c_j < 0} p_j^{-c_j}
-    pub w: Integer,
-    /// The multiplier k such that u ≡ w·k (mod N)
-    pub k: Integer,
-    /// Complete factorization of u over factor base.
-    pub u_factors: HashMap<usize, u32>,  // prime_index → exponent
-    /// Complete factorization of w over factor base.
-    pub w_factors: HashMap<usize, u32>,
-    /// Exponent vector modulo 2 for linear algebra.
-    pub exponent_vector: Vec<u8>,
-    /// Original coefficient vector (for debugging).
-    pub coefficients: Vec<i64>,
-}
+In `process_samples_for_relations` (`factor.rs`):
+- If `enable_index_slicing` and samples > 100: uses `rayon::par_iter()`
+- Otherwise: sequential iteration
+- Each sample is processed independently via `process_sample`
 
-/// Result of smoothness verification.
-#[derive(Debug, Clone)]
-pub enum VerificationResult {
-    /// Valid smooth relation found.
-    Valid(SmoothRelation),
-    /// Relation is not smooth (contains large prime factors).
-    NotSmooth { u_is_smooth: bool, w_is_smooth: bool },
-    /// Failed to factor (e.g., Pollard Rho timeout).
-    FactorizationFailed,
-    /// Invalid congruence (doesn't satisfy u ≡ w·k mod N).
-    InvalidCongruence,
-}
+### Early Exit
 
-/// Statistics for smoothness verification.
-#[derive(Debug, Default)]
-pub struct VerificationStats {
-    pub relations_tested: usize,
-    pub relations_smooth: usize,
-    pub relations_rejected: usize,
-    pub factorization_failures: usize,
-    pub trial_division_time_ms: u64,
-    pub pollard_rho_time_ms: u64,
-}
-```
+`factor_smooth` exits early if:
+- The remainder becomes 1 during division
+- The remainder is less than the current prime
 
-### Smoothness Config
+### Exponent Overflow
 
-```rust
-pub struct SmoothnessConfig {
-    /// Factor base (first π_2 primes).
-    pub factor_base: Vec<u64>,
-    /// Enable Pollard Rho for residual factorization.
-    pub use_pollard_rho: bool,
-    /// Maximum iterations for Pollard Rho.
-    pub pollard_rho_max_iters: u64,
-    /// Maximum size of k in u ≡ w·k (mod N).
-    pub max_k_threshold: u64,
-    /// Enable verification of congruence.
-    pub verify_congruence: bool,
-}
+Coefficients `e_j` are `i64`. When converting to `u32` exponents:
+- Positive exponents: `u32::try_from(ej)`
+- Negative exponents: `u32::try_from(-ej)`
 
-impl Default for SmoothnessConfig {
-    fn default() -> Self {
-        Self {
-            factor_base: Vec::new(),
-            use_pollard_rho: true,
-            pollard_rho_max_iters: 100_000,
-            max_k_threshold: 1000,
-            verify_congruence: true,
-        }
-    }
-}
-```
+If the absolute value exceeds `u32::MAX`, the conversion fails and the relation is rejected.
 
-### Numerical Considerations
+### Verification
 
-**1. Integer overflow protection:**
-```rust
-// Use arbitrary precision for large products
-let u: Integer = pos_coeffs.iter()
-    .map(|&j| Integer::from(primes[j]).pow(coeffs[j] as u32))
-    .product();
-```
+**Function**: `verify_sr_pair(pair, e, primes, n) -> bool`
 
-**2. Efficient trial division:**
-```rust
-// Early termination when p² > remainder
-if p * p > remainder {
-    break;
-}
-```
-
-**3. Modular arithmetic:**
-```rust
-// Verify congruence u ≡ w·k (mod N)
-let lhs = &relation.u % n;
-let rhs = (&relation.w * &relation.k) % n;
-assert_eq!(lhs, rhs);
-```
+Reconstructs $v$ from negative exponents, checks $w = u - v \cdot N$, and verifies $u$ matches its exponent vector.
 
 ---
 
 ## Edge Cases and Validation
 
-### Input Validation
+### Zero Coefficients
 
-| Condition | Check | Action |
-|-----------|-------|--------|
-| Empty coefficients | coeffs.len() > 0 | Error |
-| Empty factor base | !factor_base.is_empty() | Error |
-| Negative N | N > 0 | Error |
-| Coefficient overflow | Check bounds | Clamp or error |
+If all $e_j = 0$:
+- $u = 1$, $v = 1$
+- $w = 1 - N$
+- This can still be a valid smooth relation if $1 - N$ factors over the basis
 
-### Runtime Edge Cases
+### Zero w
 
-**Case: Zero coefficient vector**
-- **Issue:** $\mathbf{c} = \mathbf{0}$ produces $u = w = 1$
-- **Resolution:** Reject (trivial relation)
+If $w = 0$, the relation is trivial and rejected.
 
-**Case: u or w equals 0**
-- **Issue:** Integer underflow in product
-- **Resolution:** Skip relation with warning
+### Negative w
 
-**Case: Pollard Rho timeout**
-- **Issue:** Cannot factor large semi-smooth remainder
-- **Resolution:** Increase iterations or mark as not smooth
+The sign-bit encoding handles negative values: `exponents[0] = 1` indicates a negative number.
 
-**Case: k exceeds threshold**
-- **Issue:** $k$ too large means relation is "almost" smooth but not quite
-- **Resolution:** Reject relation
+### Large Exponents
 
-**Case: Prime factor > max(factor_base)**
-- **Issue:** Relation has a prime factor outside factor base
-- **Resolution:** Reject as not smooth
-
-### Debug Assertions
-
-```rust
-debug_assert!(!coeffs.is_empty(), "Smoothness: empty coefficient vector");
-debug_assert!(!factor_base.is_empty(), "Smoothness: empty factor base");
-debug_assert!(n > &Integer::ONE, "Smoothness: N must be > 1");
-```
-
----
-
-## Example Walkthrough
-
-### Example: Verifying a Relation
-
-**Setup:**
-- Factor base: $P = \{2, 3, 5, 7, 11, 13\}$
-- Coefficients: $\mathbf{c} = [3, 2, -1, 0, 0, 0]$
-- $N = 91$
-
-**Step 1: Extract u and w**
-
-```
-u = 2³ · 3² = 8 · 9 = 72
-w = 5¹ = 5
-```
-
-**Step 2: Verify Congruence**
-
-```
-72 mod 91 = 72
-5 mod 91 = 5
-72 - 5 = 67 ≠ 0 (mod 91)
-
-Check: 72 · 5^{-1} mod 91
-5^{-1} mod 91 = 73 (since 5 · 73 = 365 ≡ 1 mod 91)
-k = 72 · 73 mod 91 = 5256 mod 91 = 81
-
-Since k = 81 > threshold (1000?), reject.
-```
-
-Actually, let's try different coefficients:
-
-**Revised Example:**
-- Coefficients: $\mathbf{c} = [1, 1, 0, 0, 0, -1]$
-
-```
-u = 2¹ · 3¹ = 6
-w = 13¹ = 13
-
-6 - 13 = -7 ≡ 0 (mod 7)?
-Wait, N = 91 = 7 · 13
-
-Check: 6 ≡ 13·k (mod 91)
-13^{-1} mod 91? 
-GCD(13, 91) = 13 ≠ 1, so no inverse!
-
-This is a valid relation if: 6 ≡ 13 (mod 91)? No.
-
-Let's use: u = 15, w = 15 (trivial)
-Or: u = 35 = 5·7, w = 35
-
-Better example with actual smooth relation:
-u = 30 = 2·3·5
-w = 2 = 2
-
-30 - 2 = 28 ≡ 0 (mod 7)? No.
-30 - 2·13 = 30 - 26 = 4 ≡ 0 (mod 7)? No.
-```
-
-**Correct Example:**
-- Let $u = 14 = 2 \cdot 7$
-- Let $w = 14$
-- Then $14 \equiv 14$ (mod 91), so $k = 1$
-
-But this is trivial. Let me construct a real example:
-
-```
-Find: u ≡ w (mod 91) where both are smooth
-
-Try: u = 15 = 3·5, w = 15
-15 - 15 = 0 ≡ 0 (mod 91) ✓
-
-Try: u = 30 = 2·3·5, w = 30 - 91 = -61 (not smooth)
-
-Try: u = 45 = 3²·5, w = 45 - 91 = -46 = -2·23 (23 not in factor base)
-
-Try: u = 70 = 2·5·7, w = 70 - 91 = -21 = -3·7
-    w is smooth! u is smooth! ✓
-    
-Verify: 70 ≡ (-21)·k (mod 91)
-        70 + 21 = 91 ≡ 0 ✓
-        So 70 ≡ -21 (mod 91)
-        And k = -1
-```
-
-**Step 3: Factor Verification**
-
-```
-Trial divide u = 70:
-  70 / 2 = 35 (exp[2] = 1)
-  35 / 5 = 7 (exp[5] = 1)
-  7 / 7 = 1 (exp[7] = 1)
-  Remainder: 1 ✓
-
-Trial divide w = 21:
-  21 / 3 = 7 (exp[3] = 1)
-  7 / 7 = 1 (exp[7] = 1)
-  Remainder: 1 ✓
-```
-
-**Step 4: Build Exponent Vector**
-
-```
-Primes: [2, 3, 5, 7, 11, 13]
-        0  1  2  3   4   5
-
-u exponents: [1, 0, 1, 1, 0, 0]
-w exponents: [0, 1, 0, 1, 0, 0]
-
-Difference: [1, -1, 1, 0, 0, 0]
-
-Mod 2: [1, 1, 1, 0, 0, 0]  (since -1 ≡ 1 mod 2)
-```
+If $|e_j| > u32::MAX$, the conversion to `u32` fails and the relation is rejected. In practice, this only occurs for extremely large lattice points.
 
 ---
 
 ## Complexity Analysis
 
-### Time Complexity
+| Operation | Time | Space |
+|-----------|------|-------|
+| Basis construction | $O(\pi_2 \log \log \pi_2)$ | $O(\pi_2)$ |
+| Smoothness test (1 number) | $O(\pi_2 \cdot D)$ | $O(\pi_2)$ |
+| Sr-pair construction | $O(n \cdot \log |e_j|)$ | $O(\pi_2)$ |
+| Parallel processing (S samples) | $O(S \cdot \pi_2 \cdot D / p)$ | $O(S \cdot \pi_2)$ |
 
-| Operation | Complexity | Notes |
-|-----------|-----------|-------|
-| Compute u and w | $O(n \cdot M)$ | $n$ coefficients, $M$ = multiplication cost |
-| Trial division | $O(|P| \cdot \log u)$ | One division per prime |
-| Pollard Rho (worst) | $O(n^{1/4})$ iterations | For $n$-bit numbers |
-| Pollard Rho (expected) | $O(\sqrt{p})$ | $p$ = smallest prime factor |
-| **Total per relation** | $O(|P| \cdot \log N)$ | Dominated by trial division |
+Where $\pi_2$ = basis size, $D$ = cost of BigInt division, $n$ = lattice dimension, $S$ = number of samples, $p$ = threads.
 
-### Space Complexity
+---
 
-| Component | Space | Notes |
-|-----------|-------|-------|
-| Factor base | $O(|P|)$ | List of primes |
-| Relation storage | $O(|P|)$ | Exponent vectors |
-| Trial division | $O(1)$ | In-place |
-| Pollard Rho | $O(\log N)$ | Stack space |
-| **Total** | $O(|P| + \log N)$ | Linear |
+## Testing
 
-### Comparison: Trial Division vs. ECM
+Tests are in `crates/algebra/src/smoothness.rs` (17 tests):
 
-| Method | Time | When to Use |
-|--------|------|-------------|
-| Trial Division | $O(|P| \cdot \log N)$ | Small factor base ($|P| < 10^6$) |
-| Pollard Rho | $O(N^{1/4})$ | Medium factors (30-50 bits) |
-| ECM | Subexponential | Large factors (>50 bits) |
-| QS/GNFS | Superpolynomial | Very large composites |
+- `test_factor_smooth_positive` — $60 = 2^2 \cdot 3 \cdot 5$ over basis of 5 primes
+- `test_factor_smooth_negative` — $-30$ with sign bit
+- `test_not_smooth` — $101$ (prime > largest basis prime) rejected
+- `test_factor_smooth_zero` — zero is smooth with all exponents 0
+- `test_factor_smooth_one` — 1 has no prime factors
+- `test_factor_smooth_large_composite` — $21600 = 2^5 \cdot 3^3 \cdot 5^2$
+- `test_basis_construction` — first 10 primes correct
+- `test_sr_pair_construction` — simple case (may or may not be smooth)
+- `test_sr_pair_with_negative_exponents` — negative $e_j$ produce $v > 1$
+- `test_sr_pair_w_zero` — $w = 0$ rejected
+- `test_sr_pair_exponent_vector_reconstruction` — $e_u$ and $e_w$ reconstruct $u$ and $w$
+- `test_verify_sr_pair` — verification function correctness
+- `test_determinism` — same input produces same output
+- `test_edge_case_single_prime` — $256 = 2^8$ over basis {2}
+- `test_edge_case_large_exponents` — $2^{20}$ over basis {2, 3, 5}
+- `test_all_zero_exponents` — $u = 1$, $w = 1 - N$
+- `test_reconstruct_bounds_check` — panics on too-short exponent vector
 
 ---
 
 ## Connection to Stage 7
 
-### What Stage 6 Produces
+Stage 6 outputs feed into Stage 7:
+- `SrPair.e_u` and `SrPair.e_w` are combined: `(e_w[i] + e_u[i]) % 2`
+- These form the rows of a GF(2) matrix with $\pi_2 + 1$ rows and $m$ columns (one per relation)
+- The kernel of this matrix provides linear dependencies among relations
+- A dependency $\tau$ yields a congruence of squares $S^2 \equiv 1 \pmod{N}$
 
-Stage 6 outputs:
-1. **Smooth relations**: List of validated $(u, w)$ pairs
-2. **Exponent vectors**: Binary vectors for linear algebra
-3. **Factorization data**: Complete prime factorizations
-4. **Verification statistics**: Success rates and timing
-
-### What Stage 7 Expects
-
-Stage 7 (Factor Extraction) requires:
-- $\pi_2 + 1$ smooth relations (for linear dependence)
-- Exponent vectors mod 2 (for matrix construction)
-- The semiprime $N$ (for GCD computation)
-
-### Data Flow
-
-```
-Stage 6 Output                          Stage 7 Input
-├─ smooth_relations: Vec<SmoothRelation> → ├─ relations (for linear algebra)
-├─ exponent_matrix: Vec<Vec<u8>>         → ├─ matrix (mod 2)
-├─ verified_count: usize                  → (stored for statistics)
-└─ factor_base: Vec<u64>                 → └─ (used for verification)
-                                            ↓
-                                      Gaussian elimination
-                                      Dependency finding
-                                      Factor extraction
-```
-
-### Critical Invariants Handed Off
-
-1. **Smoothness guarantee:** All relations factor completely over $P$
-2. **Valid congruence:** Each relation satisfies $u \equiv w \cdot k \pmod{N}$
-3. **Sufficient relations:** At least $\pi_2 + 1$ relations for linear algebra
-
----
-
-## Summary
-
-Stage 6 validates that optimized coefficient vectors correspond to actual smooth relations. This stage:
-
-- **Extracts multiplicative relations:** From coefficient vectors to integers
-- **Verifies smoothness:** Via trial division and Pollard Rho factorization
-- **Builds exponent vectors:** For the linear algebra phase
-- **Filters invalid relations:** Only smooth relations proceed to Stage 7
-
-The key insight is that **approximate solutions need exact verification**. The tensor network finds short vectors, but Stage 6 confirms they encode usable smooth relations.
+The pipeline needs at least $\pi_2 + 2$ smooth relations to have a non-trivial kernel with high probability.
 
 ---
 

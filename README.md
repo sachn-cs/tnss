@@ -1,17 +1,23 @@
 # TNSS - Tensor-Network Schnorr's Sieving
 
-[![CI](https://github.com/sachncs/tnss/workflows/CI/badge.svg)](https://github.com/sachncs/tnss/actions)
+[![CI](https://github.com/sachn-cs/tnss/workflows/CI/badge.svg)](https://github.com/sachn-cs/tnss/actions)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
-A production-grade workspace implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with modern tensor network methods.
+A Rust implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with tensor-network variational methods.
+
+This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* **113**, 032418 (2026).
+
+## Status
+
+Research-grade, version **0.1.0**. Tested on small-to-medium semiprimes. See [`docs/`](docs/) for detailed stage-by-stage documentation and known limitations.
 
 ## Features
 
 - **7-Stage Pipeline**: Complete implementation from lattice construction to factor extraction
 - **Workspace Architecture**: 6 crates with clear domain boundaries
-- **High Performance**: Parallel tensor contractions, optimized Gaussian elimination over GF(2)
-- **Well-Tested**: 136+ unit tests with comprehensive coverage
-- **Production Ready**: Zero compiler warnings, strict clippy compliance
+- **Tensor-Network Sampling**: TTN variational optimization, OPES, and MPO spectral amplification
+- **Tested**: 149 unit tests, 4 Criterion benchmarks
+- **Zero unsafe code**, strict clippy compliance
 
 ## Workspace Structure
 
@@ -19,12 +25,12 @@ A production-grade workspace implementation of **Tensor-Network Schnorr's Sievin
 tnss/
 ├── crates/
 │   ├── core/         # Core types, errors, constants, utilities, primes
-│   ├── lattice/      # Lattice operations (LLL, BKZ, Schnorr lattice, CVP)
-│   ├── tensor/       # Tensor networks (TTN, MPO, Hamiltonian, adaptive bonds)
-│   ├── sampler/      # Optimization and sampling strategies
+│   ├── lattice/      # Lattice operations (LLL, segment LLL, BKZ, Babai, Klein)
+│   ├── tensor/       # Tensor networks (TTN, MPO, Hamiltonian, OPES)
+│   ├── sampler/      # Fallback samplers (simulated annealing, beam search)
 │   ├── algebra/      # Number theory, smoothness, GF(2) solver, factorization
 │   └── cli/          # Command-line binary and examples
-├── docs/             # Documentation
+├── docs/             # Stage-by-stage documentation
 ├── Cargo.toml        # Workspace manifest
 └── justfile          # Task runner
 ```
@@ -40,7 +46,7 @@ tnss/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/tnss.git
+git clone https://github.com/sachn-cs/tnss.git
 cd tnss
 
 # Setup environment
@@ -122,15 +128,17 @@ tnss-cli → all crates
 
 TNSS implements a 7-stage pipeline:
 
-| Stage | Crate          | Description                  |
-| ----- | -------------- | ---------------------------- |
-| 1     | `tnss-lattice` | Schnorr lattice construction |
-| 2     | `tnss-lattice` | LLL/BKZ basis reduction      |
-| 3     | `tnss-sampler` | Klein sampling for CVP       |
-| 4     | `tnss-tensor`  | TTN variational ansatz       |
-| 5     | `tnss-tensor`  | MPO spectral amplification   |
-| 6     | `tnss-algebra` | Smoothness verification      |
-| 7     | `tnss-algebra` | GF(2) linear algebra + GCD   |
+| Stage | Crate          | Description                              |
+| ----- | -------------- | ---------------------------------------- |
+| 1     | `tnss-lattice` | Schnorr lattice construction             |
+| 2     | `tnss-lattice` | LLL / segment LLL / BKZ basis reduction  |
+| 3     | `tnss-lattice` | Babai rounding and Klein sampling        |
+| 4     | `tnss-tensor`  | TTN variational ansatz                   |
+| 5     | `tnss-tensor`  | OPES, MPO amplification, fallback samplers |
+| 6     | `tnss-algebra` | Smoothness verification                  |
+| 7     | `tnss-algebra` | GF(2) linear algebra + GCD               |
+
+See [`docs/README.md`](docs/README.md) for the full documentation index and [`docs/08-implementation-notes.md`](docs/08-implementation-notes.md) for known simplifications and limitations.
 
 ## Safety and Reliability
 
@@ -138,7 +146,6 @@ TNSS implements a 7-stage pipeline:
 - **Structured error handling** with `thiserror`
 - **Deterministic builds** with committed `Cargo.lock`
 - **Strict quality gates** in CI
-- **Security auditing** with `cargo-deny`
 
 ## License
 

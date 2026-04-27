@@ -1,6 +1,6 @@
-# Stage 5: Optimization and Sampling (OPES)
+# Stage 5: Optimization and Sampling
 
-## Spectral Amplification via MPOs and Perfect Sampling
+## TTN Variational Sweeps, OPES, MPO Spectral Amplification, and Fallback Samplers
 
 ---
 
@@ -8,14 +8,16 @@
 
 1. [Purpose and Responsibility](#purpose-and-responsibility)
 2. [Mathematical Foundation](#mathematical-foundation)
-3. [Matrix Product Operators (MPOs)](#matrix-product-operators-mpos)
-4. [Spectral Amplification Algorithm](#spectral-amplification-algorithm)
-5. [OPES Perfect Sampling](#opes-perfect-sampling)
-6. [Implementation Details](#implementation-details)
-7. [Edge Cases and Validation](#edge-cases-and-validation)
-8. [Example Walkthrough](#example-walkthrough)
-9. [Complexity Analysis](#complexity-analysis)
-10. [Connection to Stage 6](#connection-to-stage-6)
+3. [TTN Variational Optimization](#ttn-variational-optimization)
+4. [OPES Sampling](#opes-sampling)
+5. [MPO Spectral Amplification](#mpo-spectral-amplification)
+6. [Fallback Samplers](#fallback-samplers)
+7. [Data Structures](#data-structures)
+8. [Implementation Details](#implementation-details)
+9. [Edge Cases and Validation](#edge-cases-and-validation)
+10. [Complexity Analysis](#complexity-analysis)
+11. [Testing](#testing)
+12. [Connection to Stage 6](#connection-to-stage-6)
 
 ---
 
@@ -23,768 +25,408 @@
 
 ### What This Stage Does
 
-Stage 5 performs **spectral amplification via Matrix Product Operators (MPOs)** to exponentially enhance the ground state, followed by **perfect sampling** from the amplified distribution. This replaces traditional DMRG-style sweeps with a more robust approach.
+Stage 5 finds **low-energy configurations** of the CVP Hamiltonian using a combination of methods:
+1. **TTN variational sweeps**: Gradient descent on leaf tensors
+2. **OPES**: TTN-guided sampling with probability-weighted energy evaluation
+3. **MPO spectral amplification**: Compute $H^k$ via truncated MPO-MPO contractions
+4. **Fallback samplers**: Simulated annealing and beam search when TTN is disabled
 
 ### Key Responsibilities
 
-1. **Construct MPO from Hamiltonian**: Represent $H$ as a tensor network
-2. **Compute $H^k$**: Form high powers of the Hamiltonian via truncated MPO-MPO contractions
-3. **Amplify ground state**: $H^k |\psi\rangle \approx \lambda_0^k |\psi_0\rangle$
-4. **Sample configurations**: Draw from the amplified distribution
-5. **Local search refinement**: Improve sampled configurations greedily
+1. **Optimize TTN**: Adjust tensor entries to minimize expected energy
+2. **Sample configurations**: Generate distinct bitstrings with low energy
+3. **Parallel evaluation**: Use index slicing for parallel energy/probability evaluation
+4. **Local search refinement**: Greedy bit-flip improvement of sampled configurations
 
 ### Why This Matters
 
-**Traditional DMRG Problems:**
-- **Iterative sweeps** can get stuck in local minima
-- **Slow convergence** requires many sweeps for high-accuracy
-- **Sensitive to initialization**—poor initial guess leads to poor result
-
-**Stage 5 Solutions:**
-- **Spectral amplification** exponentially suppresses excited states
-- **Direct sampling** from amplified distribution—no iterative optimization
-- **Robust to initialization**—random initial states work equally well
-- **"Perfect sampling"**—sample proportional to ground state amplitude
+The Hamiltonian landscape is typically rugged with many local minima. The sampling stage must:
+- Explore the configuration space broadly (TTN / simulated annealing)
+- Refine promising candidates (local search)
+- Produce enough distinct configurations for smooth relation testing
 
 ---
 
 ## Mathematical Foundation
 
-### Matrix Product Operators
+### Variational Principle
 
-An **MPO** represents an operator on $n$ sites as:
+The TTN represents a variational wavefunction $|\psi\rangle$. The expected energy is:
 
-$$
-\hat{O} = \sum_{s_1, \ldots, s_n} \sum_{s_1', \ldots, s_n'} W^{[1],s_1,s_1'} \cdot W^{[2],s_2,s_2'} \cdots W^{[n],s_n,s_n'} |s_1, \ldots, s_n\rangle\langle s_1', \ldots, s_n'|
-$$
+$$\langle H \rangle = \sum_{\mathbf{z}} |\langle \mathbf{z} | \psi \rangle|^2 H(\mathbf{z})$$
 
-Each **local tensor** $W^{[i]}$ has shape $[\chi_{i-1}, \chi_i, d, d]$ where:
-- $\chi_{i-1}, \chi_i$: Bond dimensions (left, right)
-- $d$: Physical dimension (2 for qubits)
+Minimizing $\langle H \rangle$ with respect to tensor entries biases the TTN toward low-energy configurations.
 
-**Graphical notation:**
-```
-    |s₁⟩          |s₂⟩              |sₙ⟩
-    |             |                 |
-    v             v                 v
-  ┌───┐  b₁    ┌───┐  b₂    ...   ┌───┐
-  │W¹ │───────→│W² │───────→ ... →│Wⁿ │
-  └───┘        └───┘              └───┘
-    |             |                 |
-    v             v                 v
-   ⟨s₁'|        ⟨s₂'|             ⟨sₙ'|
-```
+### TTN Leaf Optimization
 
-### MPO-MPO Multiplication
-
-The product of two MPOs $\hat{A} \cdot \hat{B}$ is:
-
-$$
-C^{[i],s,s'}_{a_{i-1}b_{i-1}, a_i b_i} = \sum_{t} A^{[i],s,t}_{a_{i-1},a_i} \cdot B^{[i],t,s'}_{b_{i-1},b_i}
-$$
-
-**Bond dimension growth:**
-- Input: $\chi_A$, $\chi_B$
-- Output: $\chi_C = \chi_A \cdot \chi_B$
-- **Truncation required** to keep $\chi_C \leq \chi_{\max}$
-
-### Spectral Amplification
-
-For Hamiltonian $H$ with eigenvalues $\lambda_0 \leq \lambda_1 \leq \cdots$:
-
-$$
-H^k |\psi\rangle = \sum_i c_i \lambda_i^k |\psi_i\rangle = \lambda_0^k \left( c_0 |\psi_0\rangle + \sum_{i>0} c_i \left(\frac{\lambda_i}{\lambda_0}\right)^k |\psi_i\rangle \right)
-$$
-
-**Amplification factor:**
-
-$$
-\frac{\text{Ground state amplitude}}{\text{First excited amplitude}} = \left(\frac{\lambda_0}{\lambda_1}\right)^{-k}
-$$
-
-For gap $\Delta = \lambda_1 - \lambda_0$:
-- Relative suppression of excited states: $\exp(-k \cdot \Delta / \lambda_0)$
-
-### Successive Squaring
-
-Compute $H^k$ efficiently using binary exponentiation:
+For each leaf tensor, the gradient is approximated by finite differences:
 
 ```
-result ← I (identity)
-base ← H
-power ← k
-
-WHILE power > 0:
-    IF power is odd:
-        result ← result · base    (MPO-MPO multiply)
-    IF power > 1:
-        base ← base · base         (square)
-    power ← power / 2
+grad[j] = (H(z_j = 1) - H(z_j = 0)) / (2 * epsilon)
 ```
 
-**Cost:** $O(\log k)$ MPO-MPO contractions vs. $O(k)$ for direct multiplication.
+The tensor is updated: $T \leftarrow T - \text{lr} \cdot \text{grad}$, then renormalized.
 
-### Truncated SVD
+### OPES Sampling
 
-After MPO-MPO contraction, bond dimension is $\chi^2$. Truncate via SVD:
+OPES (Optimal tensor network Sampling) samples configurations using TTN probabilities:
 
-1. Reshape tensor to matrix $M$ of size $[\chi^2, d^2 \cdot \chi^2]$
-2. Compute SVD: $M = U \cdot S \cdot V^\dagger$
-3. Keep top $\chi_{\max}$ singular values where $S_i \geq \epsilon$
-4. Reconstruct truncated tensor
+1. Generate candidate bitstrings
+2. Evaluate TTN probability $P(\mathbf{z}) = |\langle \mathbf{z} | \psi \rangle|^2$
+3. Evaluate Hamiltonian energy $H(\mathbf{z})$
+4. Weight candidates by $H(\mathbf{z}) - \ln P(\mathbf{z})$
+5. Return top $\gamma$ configurations
 
-**Truncation error:** $\sum_{i=\chi_{\max}+1}^{\chi^2} S_i^2$
+### MPO Spectral Amplification
+
+The Hamiltonian is represented as a Matrix Product Operator (MPO):
+
+$$H = \sum_{s_1, \ldots, s_n} W^{[1]}_{s_1, s_1'} \cdots W^{[n]}_{s_n, s_n'}$$
+
+Computing $H^k$ amplifies the ground state:
+
+$$H^k |\psi\rangle \approx \lambda_0^k |\psi_0\rangle \langle \psi_0 | \psi \rangle$$
+
+The implementation uses successive squaring (binary exponentiation) for efficiency.
+
+**Important**: The current MPO implementation creates a simplified nearest-neighbor identity-like structure with dummy local energy terms. It does **not** fully encode the actual CVP Hamiltonian structure. The spectral amplification estimates a ground-state energy from the MPO norm but does not contract the full amplified MPO for each configuration.
 
 ---
 
-## Matrix Product Operators (MPOs)
+## TTN Variational Optimization
 
-### MPO Structure
+**Function**: `ttn.sweep(hamiltonian, learning_rate)` and `ttn.sweep_adaptive(hamiltonian, learning_rate)`
+
+**File**: `crates/tensor/src/ttn.rs`
+
+### Algorithm
+
+1. For each leaf node:
+   - Identify physical index $j$
+   - For each bond dimension $d$:
+     - Evaluate energy with $z_j = 1$: `H(z_j = 1, others = current)`
+     - Evaluate energy with $z_j = 0$: `H(z_j = 0, others = current)`
+     - Compute gradient: `(energy_1 - energy_0) / (2 * epsilon)`
+   - Update tensor: `T = T - lr * grad`
+   - Renormalize: `T = T / ||T||`
+2. If adaptive mode: update bond dimensions based on entropy
+
+**Note**: The finite-difference gradient is $O(\text{bond_dim} \cdot n)$ evaluations per sweep step. This is not the most efficient approach (analytical gradients would be faster) but is simple and robust.
+
+---
+
+## OPES Sampling
+
+**Function**: `OpesSampler::sample_with_ttn(ttn, hamiltonian, rng) -> Vec<OpesSample>`
+
+**File**: `crates/tensor/src/opes.rs`
+
+### Algorithm
+
+1. **Estimate partition function**: 100 random samples, scaled by configuration space size
+2. **Generate candidates**: `num_samples * 4` random bitstrings
+3. **Evaluate in parallel** (if index slicing enabled):
+   - `energy = hamiltonian.energy(bits)`
+   - `prob = ttn.probability(bits)`
+   - Reject if `prob < min_probability`
+4. **Deduplicate** and **sort by energy**
+5. **Return top** `num_samples`
+
+**Exact sampling** (`sample_exact`): Builds cumulative probability bounds for $n \leq 20$ and samples without replacement via binary search. Not used in the main pipeline.
+
+### Hybrid TTN + Local Search
+
+**Function**: `sample_low_energy_configs(hamiltonian, num_samples, bond_dim, rng)`
+
+**File**: `crates/tensor/src/opes.rs`
+
+1. Create random TTN
+2. Run 10 optimization sweeps
+3. Sample candidates via OPES
+4. Refine each with greedy local search
+5. Return top `num_samples`
+
+---
+
+## MPO Spectral Amplification
+
+**Function**: `spectral_amplification(hamiltonian, config) -> Result<AmplificationResult>`
+
+**File**: `crates/tensor/src/opes.rs`
+
+### Algorithm
+
+1. Convert Hamiltonian to MPO (simplified nearest-neighbor structure)
+2. If `config.progressive` and power > 2: use successive squaring
+   - Square the MPO repeatedly: $H \rightarrow H^2 \rightarrow H^4 \rightarrow \ldots$
+   - Multiply into result when binary digit is 1
+3. Otherwise: direct multiplication $H \cdot H \cdots H$ (power times)
+4. Truncate bond dimension after each multiplication
+5. Estimate ground state energy: $E_0 = \|H^k\|^{1/k}$
+
+### MPO Contraction
+
+**Function**: `contract_mpo_mpo(other, max_bond_dim, svd_threshold)`
+
+**File**: `crates/tensor/src/opes.rs`
+
+**Algorithm**:
+1. For each site, contract physical indices:
+   - `C[i*j, k*l, p, q] = sum_r A[i, k, p, r] * B[j, l, r, q]`
+2. If resulting bond <= `max_bond_dim`: return directly
+3. Otherwise: truncate via power iteration on Gram matrix
+
+**Truncation** (`truncate_tensor`):
+1. Reshape to matrix $M$
+2. Compute Gram matrix $G = M M^T$
+3. Power iteration (3 iterations) to find dominant eigenvectors
+4. Deflate and repeat for next singular value
+5. Reconstruct tensor with reduced bond dimension
+
+**Note**: This is a custom power-iteration method, not a true SVD or randomized SVD. It is sufficient for truncation quality but lacks the precision of a full SVD.
+
+---
+
+## Fallback Samplers
+
+When `Config.use_ttn_sampler = false`, the pipeline falls back to direct samplers in `crates/sampler/src/sampler.rs`.
+
+### Simulated Annealing
+
+**Struct**: `SimulatedAnnealingSampler<R>`
+
+**Algorithm**:
+1. Start from all-zero configuration (Babai point)
+2. For each temperature step:
+   - Propose random bit flip
+   - Accept if $\Delta E \leq 0$
+   - Accept with probability $\exp(-\Delta E / T)$ if $\Delta E > 0$
+   - Cool: $T \leftarrow \alpha \cdot T$
+3. Track best configuration
+4. Optional local search refinement
+
+**Parameters**:
+- `sweeps`: 1000 (Monte Carlo sweeps)
+- `t0`: 10.0 (initial temperature)
+- `cooling`: 0.995 (geometric cooling)
+- `local_search`: true
+
+**Early termination**: Stops if temperature < `MIN_TEMPERATURE = 1e-10` or 100 consecutive rejections.
+
+### Beam Search
+
+**Struct**: `BeamSearchSampler`
+
+**Algorithm**:
+1. Initialize beam with all-zero configuration
+2. Pop best node, add to results
+3. Generate neighbors by single bit flips
+4. Insert unseen neighbors into priority queue (min-heap)
+5. Limit beam width to 10,000
+
+**Deterministic**: No randomness; always produces the same results for the same Hamiltonian.
+
+---
+
+## Data Structures
+
+### `OpesSampler`
+
+**File**: `crates/tensor/src/opes.rs`
 
 ```rust
-/// Matrix Product Operator (MPO) representation.
-pub struct MPO {
-    /// Local tensors for each site.
-    /// Shape: [bond_left, bond_right, phys_dim, phys_dim]
-    pub tensors: Vec<Array4<f64>>,
-    /// Number of sites.
+pub struct OpesSampler {
+    pub config: OpesConfig,
+    pub sampled: HashSet<Vec<bool>>,
+    cumulative_bounds: Vec<(Vec<bool>, f64)>,
+    pub partition_function: f64,
+    pub stats: OpesStats,
+}
+```
+
+### `OpesConfig`
+
+```rust
+pub struct OpesConfig {
+    pub num_samples: usize,          // Default 100
+    pub track_samples: bool,         // Avoid resampling
+    pub max_attempts: usize,         // Default 10000
+    pub use_index_slicing: bool,     // Parallel evaluation
+    pub slice_config: SliceConfig,
+    pub use_entropy_guidance: bool,
+    pub min_probability: f64,        // Default 1e-15
+}
+```
+
+### `MatrixProductOperator`
+
+**File**: `crates/tensor/src/opes.rs`
+
+```rust
+pub struct MatrixProductOperator {
+    pub tensors: Vec<Array4<f64>>,  // [bond_left, bond_right, phys_dim, phys_dim]
     pub n_sites: usize,
-    /// Physical dimension (typically 2 for qubits).
     pub phys_dim: usize,
-    /// Current maximum bond dimension.
     pub max_bond_dim: usize,
 }
 ```
 
-### MPO from Hamiltonian
-
-For the spin-glass Hamiltonian:
-
-```rust
-impl MPO {
-    pub fn from_hamiltonian(hamiltonian: &CvpHamiltonian) -> Self {
-        let n_sites = hamiltonian.n_vars();
-        let phys_dim = 2;  // Binary variables
-        let bond_dim = 2;  // Identity + operator
-        
-        let mut tensors = Vec::with_capacity(n_sites);
-        
-        for site in 0..n_sites {
-            let mut tensor = Array4::zeros([bond_dim, bond_dim, phys_dim, phys_dim]);
-            
-            // Identity channel
-            for i in 0..phys_dim {
-                tensor[[0, 0, i, i]] = 1.0;
-            }
-            
-            // Operator channel (simplified)
-            for i in 0..phys_dim {
-                for j in 0..phys_dim {
-                    let local_energy = if i == j { 0.0 } else { 0.1 };
-                    tensor[[1, 1, i, j]] = local_energy;
-                }
-            }
-            
-            tensors.push(tensor);
-        }
-        
-        Self {
-            tensors,
-            n_sites,
-            phys_dim,
-            max_bond_dim: bond_dim,
-        }
-    }
-}
-```
-
-### MPO-MPO Contraction
-
-```rust
-impl MPO {
-    pub fn contract_mpo_mpo(
-        &self,
-        other: &MPO,
-        max_bond_dim: usize,
-        svd_threshold: f64,
-    ) -> MPO {
-        let n_sites = self.n_sites;
-        let phys_dim = self.phys_dim;
-        let mut result_tensors = Vec::with_capacity(n_sites);
-        
-        for site in 0..n_sites {
-            let a = &self.tensors[site];
-            let b = &other.tensors[site];
-            
-            let bond_a_left = a.shape()[0];
-            let bond_a_right = a.shape()[1];
-            let bond_b_left = b.shape()[0];
-            let bond_b_right = b.shape()[1];
-            
-            // Contract: result[i,j,p,q] = Σ_{k,l} A[i,k,p,l] * B[k,j,l,q]
-            // Simplified contraction (actual implementation is more complex)
-            let mut result = Array4::zeros([
-                bond_a_left * bond_b_left,
-                bond_a_right * bond_b_right,
-                phys_dim,
-                phys_dim,
-            ]);
-            
-            for i in 0..bond_a_left {
-                for j in 0..bond_b_left {
-                    for k in 0..bond_a_right {
-                        for l in 0..bond_b_right {
-                            for p in 0..phys_dim {
-                                for q in 0..phys_dim {
-                                    for r in 0..phys_dim {
-                                        result[[i * bond_b_left + j, 
-                                               k * bond_b_right + l, 
-                                               p, q]] +=
-                                            a[[i, k, p, r]] * b[[j, l, r, q]];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Truncate if necessary
-            let result = Self::truncate_tensor(
-                &result, max_bond_dim, svd_threshold, phys_dim
-            );
-            
-            result_tensors.push(result);
-        }
-        
-        // Compute actual max bond dimension
-        let actual_max_bond = result_tensors
-            .iter()
-            .map(|t| t.shape()[0].max(t.shape()[1]))
-            .max()
-            .unwrap_or(1);
-        
-        MPO {
-            tensors: result_tensors,
-            n_sites,
-            phys_dim,
-            max_bond_dim: actual_max_bond,
-        }
-    }
-}
-```
-
----
-
-## Spectral Amplification Algorithm
-
-### Main Algorithm
-
-```
-Algorithm: SpectralAmplification
-Input:
-    hamiltonian: CvpHamiltonian
-    config: AmplificationConfig {power, max_bond_dim, svd_threshold, progressive}
-
-Output:
-    result: AmplificationResult with amplified MPO and statistics
-
-Procedure SpectralAmplification(hamiltonian, config):
-    // Convert Hamiltonian to MPO
-    h_mpo ← MPO::from_hamiltonian(hamiltonian)
-    
-    IF config.progressive AND config.power > 2:
-        // Use successive squaring
-        result ← h_mpo
-        current ← h_mpo
-        power_remaining ← config.power
-        num_contractions ← 0
-        
-        WHILE power_remaining > 0:
-            IF power_remaining MOD 2 = 1:
-                result ← result.contract_mpo_mpo(
-                    &current, config.max_bond_dim, config.svd_threshold
-                )
-                num_contractions ← num_contractions + 1
-            
-            IF power_remaining > 1:
-                current ← current.contract_mpo_mpo(
-                    &current, config.max_bond_dim, config.svd_threshold
-                )
-                num_contractions ← num_contractions + 1
-            
-            power_remaining ← power_remaining / 2
-    ELSE:
-        // Direct multiplication
-        result ← h_mpo
-        num_contractions ← 0
-        
-        FOR i = 1 TO config.power - 1:
-            result ← result.contract_mpo_mpo(
-                &h_mpo, config.max_bond_dim, config.svd_threshold
-            )
-            num_contractions ← num_contractions + 1
-    
-    // Estimate ground state energy
-    norm ← result.norm()
-    ground_state_energy ← norm.powf(1.0 / config.power as f64)
-    
-    RETURN AmplificationResult {
-        amplified_mpo: result,
-        ground_state_energy,
-        num_contractions,
-        max_bond_dim: config.max_bond_dim,
-        converged: true
-    }
-```
-
-### Configuration
+### `AmplificationConfig`
 
 ```rust
 pub struct AmplificationConfig {
-    /// Power k for H^k computation.
-    pub power: usize,
-    /// Maximum bond dimension during amplification.
-    pub max_bond_dim: usize,
-    /// SVD truncation threshold.
-    pub svd_threshold: f64,
-    /// Whether to use progressive (successive squaring) amplification.
-    pub progressive: bool,
-}
-
-impl Default for AmplificationConfig {
-    fn default() -> Self {
-        Self {
-            power: 8,
-            max_bond_dim: 64,
-            svd_threshold: 1e-12,
-            progressive: true,
-        }
-    }
+    pub power: usize,                // Default 8
+    pub max_bond_dim: usize,        // Default 64
+    pub svd_threshold: f64,         // Default 1e-12
+    pub progressive: bool,          // Use successive squaring
 }
 ```
 
----
+### `SimulatedAnnealingSampler`
 
-## OPES Perfect Sampling
+**File**: `crates/sampler/src/sampler.rs`
 
-### Sampling Algorithm
-
-```
-Algorithm: SampleAmplifiedMPO
-Input:
-    hamiltonian: CvpHamiltonian
-    num_samples: Number of configurations to generate
-    amplification_power: k for H^k
-    rng: Random number generator
-
-Output:
-    samples: Vec<(configuration, energy)>
-
-Procedure SampleAmplifiedMPO(hamiltonian, num_samples, amplification_power, rng):
-    // Perform spectral amplification
-    amp_config ← AmplificationConfig {
-        power: amplification_power,
-        ..Default::default()
-    }
-    amp_result ← spectral_amplification(hamiltonian, &amp_config)
-    
-    n_vars ← hamiltonian.n_vars()
-    samples ← EmptySet()
-    
-    // Generate candidate configurations
-    num_candidates ← (num_samples * 20).min(1 << n_vars.min(20))
-    
-    FOR trial = 1 TO num_candidates:
-        bits ← RandomBitstring(n_vars)
-        
-        IF bits IN samples:
-            CONTINUE
-        
-        // Compute "amplified energy"
-        base_energy ← hamiltonian.energy(&bits)
-        // Amplification raises probability of low-energy states
-        amplified_prob ← EXP(-base_energy * amplification_power)
-        
-        IF amplified_prob > 1e-20:
-            samples.ADD((bits, base_energy))
-    
-    // Sort by energy and return top samples
-    SORT(samples) BY energy ASCENDING
-    RETURN samples.TRUNCATE(num_samples)
+```rust
+pub struct SimulatedAnnealingSampler<R: Rng> {
+    rng: R,
+    pub sweeps: usize,               // Default 1000
+    pub t0: f64,                     // Default 10.0
+    pub cooling: f64,                // Default 0.995
+    pub local_search: bool,          // Default true
+}
 ```
 
-### Hybrid Sampling with Local Search
+### `BeamSearchSampler`
 
-```
-Algorithm: SampleHybridAmplification
-Input:
-    hamiltonian: CvpHamiltonian
-    num_samples: usize
-    amplification_power: usize
-    use_local_search: bool
-
-Output:
-    samples: Vec<(bits, energy)>
-
-Procedure SampleHybridAmplification(hamiltonian, num_samples, amplification_power, use_local_search):
-    // Get initial samples
-    samples ← sample_amplified_mpo(hamiltonian, num_samples * 2, amplification_power)
-    
-    // Deduplicate
-    seen ← EmptySet()
-    samples ← FILTER(samples, |(bits, _)| bits NOT IN seen)
-    
-    // Local search refinement
-    IF use_local_search:
-        samples ← MAP(samples, |(mut bits, mut energy)|:
-            improved ← TRUE
-            WHILE improved:
-                improved ← FALSE
-                FOR i = 0 TO bits.len() - 1:
-                    bits[i] ← NOT bits[i]  // Flip bit
-                    new_energy ← hamiltonian.energy(&bits)
-                    IF new_energy < energy:
-                        energy ← new_energy
-                        improved ← TRUE
-                    ELSE:
-                        bits[i] ← NOT bits[i]  // Revert
-            RETURN (bits, energy)
-        )
-    
-    // Final sort and truncation
-    SORT(samples) BY energy ASCENDING
-    RETURN samples.TRUNCATE(num_samples)
+```rust
+pub struct BeamSearchSampler {
+    pub beam_width: usize,           // Default 10000
+}
 ```
 
 ---
 
 ## Implementation Details
 
-### Data Structures
+### Main Pipeline Sampling
+
+In `crates/algebra/src/factor.rs`, the `sample_configurations` function decides between TTN and fallback:
 
 ```rust
-/// Result of spectral amplification.
-pub struct AmplificationResult {
-    /// The amplified MPO (H^k).
-    pub amplified_mpo: MPO,
-    /// Estimated ground state energy.
-    pub ground_state_energy: f64,
-    /// Number of MPO-MPO contractions performed.
-    pub num_contractions: usize,
-    /// Maximum bond dimension reached.
-    pub max_bond_dim: usize,
-    /// Convergence information.
-    pub converged: bool,
-}
-
-/// OPES sample structure.
-pub struct OpesSample {
-    /// The configuration as a bit-string.
-    pub bits: Vec<bool>,
-    /// The probability of this configuration.
-    pub probability: f64,
-    /// The energy (Hamiltonian expectation value).
-    pub energy: f64,
+if cfg.use_ttn_sampler {
+    sample_with_ttn(hamiltonian, cfg, rng)
+} else {
+    sample_fallback(hamiltonian, cfg.gamma, rng)
 }
 ```
 
-### Numerical Considerations
+### TTN Sampling Path
 
-**1. SVD Truncation:**
-```rust
-fn truncate_tensor(
-    tensor: &Array4<f64>,
-    max_bond_dim: usize,
-    svd_threshold: f64,
-    phys_dim: usize,
-) -> Array4<f64> {
-    let bond_left = tensor.shape()[0];
-    let bond_right = tensor.shape()[1];
-    
-    // If already small enough, return as-is
-    if bond_left <= max_bond_dim && bond_right <= max_bond_dim {
-        return tensor.clone();
-    }
-    
-    // Reshape to matrix for SVD
-    let flat_dim = phys_dim * phys_dim;
-    let mut matrix = Array2::zeros([bond_left * bond_right, flat_dim]);
-    
-    // ... populate matrix ...
-    
-    // For simplicity, truncate by taking subarray
-    // Full implementation would use actual SVD
-    let new_bond_left = bond_left.min(max_bond_dim);
-    let new_bond_right = bond_right.min(max_bond_dim);
-    
-    let mut truncated = Array4::zeros([new_bond_left, new_bond_right, phys_dim, phys_dim]);
-    // ... copy values ...
-    
-    truncated
-}
-```
+`sample_with_ttn`:
+1. Creates TTN with `cfg.ttn_config()`
+2. Runs 10 sweeps (adaptive if enabled)
+3. If `enable_index_slicing` and `gamma > 50`: uses `sample_with_index_slicing`
+4. Otherwise: uses `sample_low_energy_internal` (random search)
 
-**2. Probability computation:**
-```rust
-// Compute "amplified probability"
-let amplified_prob = (-base_energy * amplification_power as f64).exp();
+### Index Slicing in Sampling
 
-// Guard against underflow
-if amplified_prob > 1e-20 {
-    samples.push((bits, base_energy));
-}
-```
+`sample_with_index_slicing`:
+1. Generates `gamma * 4` random candidates
+2. Evaluates in parallel via `rayon`:
+   - `energy = hamiltonian.energy(bits)`
+   - `prob = ttn.probability(bits)`
+   - Weighted score: `energy - prob.ln()`
+3. Sorts by score, filters NaN, returns top `gamma`
 
-**3. Local search:**
-```rust
-fn local_search(hamiltonian: &CvpHamiltonian, bits: &mut Vec<bool>, energy: &mut f64) {
-    const EPSILON: f64 = 1e-12;
-    let mut improved = true;
-    let mut iterations = 0;
-    const MAX_ITERATIONS: usize = 100;
-    
-    while improved && iterations < MAX_ITERATIONS {
-        improved = false;
-        iterations += 1;
-        
-        for i in 0..bits.len() {
-            bits[i] = !bits[i];  // Flip
-            let new_energy = hamiltonian.energy(bits);
-            
-            if new_energy < *energy - EPSILON {
-                *energy = new_energy;
-                improved = true;
-            } else {
-                bits[i] = !bits[i];  // Revert
-            }
-        }
-    }
-}
-```
+**Note**: The name "index slicing" here refers to parallel evaluation of candidate configurations, not slicing of tensor contraction indices. The configuration space is partitioned across threads.
+
+### Partition Function Estimation
+
+`estimate_partition_function`:
+- Uses 100 random samples
+- Scales by $2^n / 100$ for $n < 60$
+- For $n \geq 60$: returns `total * 100.0` (rough scaling)
+
+This is a crude estimate used only for probability normalization in OPES.
 
 ---
 
 ## Edge Cases and Validation
 
-### Input Validation
+### TTN Creation Failure
 
-| Condition | Check | Action |
-|-----------|-------|--------|
-| power = 0 | power > 0 | Use default (8) |
-| max_bond_dim < 1 | max_bond_dim >= 2 | Use minimum (2) |
-| svd_threshold <= 0 | svd_threshold > 0 | Use default (1e-12) |
-| num_samples = 0 | num_samples > 0 | Error |
+If `TreeTensorNetwork::new_with_config` fails (e.g., `n_qubits < 1`), `sample_with_ttn` returns an empty vector. The main pipeline then has no samples for this CVP instance.
 
-### Runtime Edge Cases
+### NaN Energies
 
-**Case: MPO bond explosion**
-- **Issue:** $\chi^2 > \chi_{\max}$ after contraction
-- **Resolution:** Aggressive truncation (may lose accuracy)
+If energy evaluation produces NaN (overflow), the configuration is filtered out. The `compare_energy` function returns `None` for NaN comparisons.
 
-**Case: Zero norm**
-- **Issue:** $H^k$ collapses to zero operator
-- **Resolution:** Check normalization, restart with lower power
+### Empty Samples
 
-**Case: Local search cycling**
-- **Issue:** Flipping bits cycles without improvement
-- **Resolution:** Track visited states, limit iterations
+If all sampling methods return empty results, `process_samples_for_relations` finds 0 smooth relations and the pipeline proceeds to the next CVP instance.
 
-**Case: Underflow in probability**
-- **Issue:** $\exp(-E \cdot k)$ underflows to 0 for large $E \cdot k$
-- **Resolution:** Use log-probabilities, sample uniformly then reweight
+### MPO Contraction Overflow
 
-### Debug Assertions
-
-```rust
-debug_assert!(power > 0, "Amplification power must be positive");
-debug_assert!(
-    max_bond_dim >= 2,
-    "Maximum bond dimension too small"
-);
-debug_assert!(
-    norm.is_finite() && norm > 0.0,
-    "MPO norm must be positive and finite"
-);
-```
-
----
-
-## Example Walkthrough
-
-### Example: Spectral Amplification
-
-**Setup:**
-- Hamiltonian with gap $\Delta = 0.5$
-- Ground state energy $\lambda_0 = 0.0$
-- First excited $\lambda_1 = 0.5$
-- Power $k = 8$
-
-**Amplification:**
-
-```
-Initial state: |ψ⟩ = 0.7|ψ₀⟩ + 0.5|ψ₁⟩ + 0.3|ψ₂⟩ + ...
-
-After H^8:
-  Amplitude of |ψ₀⟩: 0.7 · 0.0^8 = 0
-  Amplitude of |ψ₁⟩: 0.5 · 0.5^8 = 0.5 · 0.0039 = 0.002
-  Amplitude of |ψ₂⟩: 0.3 · 1.0^8 = 0.3
-  ...
-
-Wait, this doesn't work for λ₀ = 0.
-
-Better example:
-  λ₀ = 2.0, λ₁ = 2.5, λ₂ = 3.0
-  
-After H^8:
-  |ψ₀⟩ component: 0.7 · 2.0^8 = 0.7 · 256 = 179.2
-  |ψ₁⟩ component: 0.5 · 2.5^8 = 0.5 · 1526 = 763
-  |ψ₂⟩ component: 0.3 · 3.0^8 = 0.3 · 6561 = 1968
-
-Relative to ground state:
-  |ψ₁⟩/|ψ₀⟩ = (2.5/2.0)^8 = 1.25^8 ≈ 5.96
-  |ψ₂⟩/|ψ₀⟩ = (3.0/2.0)^8 = 1.5^8 ≈ 25.6
-
-Ground state is still not dominant. Need smaller gap or higher power.
-
-With gap Δ = 0.1:
-  λ₀ = 2.0, λ₁ = 2.1, λ₂ = 2.2
-  
-  |ψ₁⟩/|ψ₀⟩ = (2.1/2.0)^8 = 1.05^8 ≈ 1.48
-  |ψ₂⟩/|ψ₀⟩ = (2.2/2.0)^8 = 1.1^8 ≈ 2.14
-
-Still not great. With k = 32:
-  |ψ₁⟩/|ψ₀⟩ = 1.05^32 ≈ 5.0
-  |ψ₂⟩/|ψ₀⟩ = 1.1^32 ≈ 25.0
-
-Actually, this amplifies excited states if λ > 1!
-
-Correct interpretation:
-  H^k |ψ⟩ amplifies components by λ^k
-  For ground state to dominate, we need the state to be expressed
-  in the energy eigenbasis, and then the sampling is weighted by λ^(2k)
-  
-The key is that we're using H^k to define a sampling distribution:
-  P(z) ∝ |⟨z|H^k|ψ⟩|^2
-
-For random |ψ⟩, the components in eigenbasis are random, and
-H^k projects onto low-energy states.
-```
-
-**Practical Example:**
-
-For a simple 2-qubit system:
-```
-Configurations and energies:
-  |00⟩: E = 0.0  ← Ground state
-  |01⟩: E = 1.0
-  |10⟩: E = 1.0
-  |11⟩: E = 2.0
-
-Sampling without amplification (k=1):
-  P(|00⟩) ∝ exp(-0) = 1.0
-  P(|01⟩) ∝ exp(-1) = 0.368
-  P(|10⟩) ∝ exp(-1) = 0.368
-  P(|11⟩) ∝ exp(-2) = 0.135
-
-Sampling with amplification (k=8):
-  P(|00⟩) ∝ exp(-0) = 1.0
-  P(|01⟩) ∝ exp(-8) = 0.000335
-  P(|10⟩) ∝ exp(-8) = 0.000335
-  P(|11⟩) ∝ exp(-16) = 1.13e-7
-
-Ground state is 3000x more likely to be sampled!
-```
+If bond dimensions overflow `usize::MAX` during contraction, the implementation returns a zero-filled fallback tensor.
 
 ---
 
 ## Complexity Analysis
 
-### Time Complexity
+| Operation | Time | Space |
+|-----------|------|-------|
+| TTN sweep (1 step) | $O(n \cdot \chi^3)$ | $O(n \cdot \chi^3)$ |
+| OPES sequential | $O(k \cdot n \cdot \chi^3)$ | $O(k \cdot n)$ |
+| OPES parallel | $O(k \cdot n \cdot \chi^3 / p)$ | $O(k \cdot n)$ |
+| MPO creation | $O(n \cdot \chi^4)$ | $O(n \cdot \chi^4)$ |
+| MPO contraction | $O(n \cdot \chi^6)$ | $O(n \cdot \chi^4)$ |
+| MPO truncation | $O(\chi^4 \cdot k)$ | $O(\chi^3)$ |
+| Simulated annealing | $O(\text{sweeps} \cdot n \cdot d)$ | $O(n)$ |
+| Beam search | $O(\gamma \cdot n^2 \cdot d)$ | $O(\text{beam_width} \cdot n)$ |
+| Local search | $O(n^2 \cdot d)$ | $O(n)$ |
 
-| Operation | Complexity | Notes |
-|-----------|-----------|-------|
-| MPO construction | $O(n \cdot \chi^4)$ | Initialize local tensors |
-| MPO-MPO contraction | $O(n \cdot \chi^6)$ | Per contraction |
-| Truncation (SVD) | $O(n \cdot \chi^6)$ | Bottleneck |
-| Successive squaring | $O(\log k \cdot n \cdot \chi^6)$ | $\log_2 k$ contractions |
-| Direct multiplication | $O(k \cdot n \cdot \chi^6)$ | $k$ contractions |
-| Sampling | $O(S \cdot n \cdot \chi^3)$ | $S$ = samples |
-| Local search | $O(S \cdot n \cdot d)$ | $d$ = Hamming distance |
-| **Total** | $O(\log k \cdot n \cdot \chi^6)$ | Dominated by contractions |
+Where $n$ = number of variables, $\chi$ = bond dimension, $d$ = target dimension, $k$ = number of samples, $p$ = threads.
 
-### Space Complexity
+---
 
-| Component | Space | Notes |
-|-----------|-------|-------|
-| MPO tensors | $O(n \cdot \chi^4)$ | Main storage |
-| Temporary contraction | $O(\chi^6)$ | Per site during contraction |
-| Samples | $O(S \cdot n)$ | Configuration storage |
-| **Total** | $O(n \cdot \chi^4)$ | Quadratic in bond dimension |
+## Testing
 
-### Comparison: DMRG vs. Spectral Amplification
+Tests are in `crates/tensor/src/opes.rs` (11 tests) and `crates/sampler/src/sampler.rs` (13 tests).
 
-| Aspect | DMRG | Spectral Amplification |
-|--------|------|------------------------|
-| Approach | Iterative sweeps | Direct sampling |
-| Convergence | Can get stuck | Exponential suppression |
-| Local minima | Susceptible | Robust |
-| Cost per step | $O(n \cdot \chi^3)$ | $O(\log k \cdot n \cdot \chi^6)$ |
-| Steps needed | 10-100 sweeps | 1 amplification |
-| Total cost | $O(100 \cdot n \cdot \chi^3)$ | $O(\log k \cdot n \cdot \chi^6)$ |
+Key OPES tests:
+- `test_opes_sampler_creation` — default config values
+- `test_sample_low_energy` — produces valid samples
+- `test_local_search_improvement` — local search does not worsen energy
+- `test_index_to_bits` — bitstring encoding correctness
+- `test_mpo_creation` — MPO tensor shapes
+- `test_mpo_random_creation` — random MPO properties
+- `test_mpo_norm` — norm is positive and finite
+- `test_mpo_normalize` — normalization sets norm to 1
+- `test_mpo_mpo_contraction` — contraction produces valid MPO
+- `test_amplification_config_defaults` — default amplification config
+- `test_sample_amplified_mpo` — amplified sampling produces results
 
-Tradeoff: Spectral amplification is more expensive per run but more robust.
+Key sampler tests:
+- `test_simulated_annealing_determinism` — same seed gives same results
+- `test_simulated_annealing_valid_configs` — all configs valid
+- `test_simulated_annealing_energy_trend` — energy non-increasing in sorted results
+- `test_beam_search_determinism` — deterministic output
+- `test_beam_search_validity` — valid configurations
+- `test_uniqueness` — no duplicate configurations
+- `test_acceptance_probability` — Metropolis criterion correctness
+- `test_local_search_improvement` — refinement does not worsen energy
 
 ---
 
 ## Connection to Stage 6
 
-### What Stage 5 Produces
+Stage 5 outputs feed into Stage 6:
+- Sampled bitstring configurations are converted to lattice points via `hamiltonian.compute_lattice_point`
+- Coefficients are extracted by dividing lattice point coordinates by diagonal weights
+- The coefficients are used to construct $u$ and $w$ for smoothness testing
+- Each sample is tested independently (in parallel if `enable_index_slicing`)
 
-Stage 5 outputs:
-1. **Low-energy configurations**: $\{\mathbf{z}^{(s)}\}$ with energies $E_s$
-2. **Sampling statistics**: Acceptance rates, unique samples, etc.
-3. **Approximate partition function**: $Z \approx \sum_s e^{-\beta E_s}$
-
-### What Stage 6 Expects
-
-Stage 6 (Smoothness Verification) requires:
-- Candidate configurations $\mathbf{z}$ (to check for smooth relations)
-- Coefficient recovery (convert $\mathbf{z}$ to lattice coefficients)
-- Factor base primes (from Stage 1)
-
-### Data Flow
-
-```
-Stage 5 Output                            Stage 6 Input
-├─ configurations: Vec<Vec<bool>>    →   ├─ configs (to verify)
-├─ energies: Vec<f64>                   →   (for reference)
-├─ stats: OpesStats                     →   (for monitoring)
-└─ coefficients: Vec<i64>             →   └─ base coeffs (from Stage 3)
-                                        ↓
-                                    Smoothness testing
-                                    Trial division
-                                    SrPair construction
-```
-
-### Critical Invariants Handed Off
-
-1. **Valid configurations**: All $\mathbf{z} \in \{0,1\}^n$
-2. **Energy correspondence**: $E_s = H(\mathbf{z}^{(s)})$
-3. **Sampling quality**: Configurations are low-energy but may not be ground state
-
----
-
-## Summary
-
-Stage 5 performs spectral amplification and perfect sampling for variational optimization. This stage:
-
-- **Amplifies the ground state**: Exponentially via $H^k$ computation
-- **Samples directly**: From the amplified distribution—no iterative optimization
-- **Robust to local minima**: Excited states are exponentially suppressed
-- **Refines solutions**: Local search improves sampled configurations
-
-The key insight is that **exponential amplification beats iterative refinement**: instead of slowly converging to the ground state through sweeps, we directly construct a distribution peaked at the ground state and sample from it.
+The smooth relations found in Stage 6 accumulate across CVP instances until enough are collected for Stage 7.
 
 ---
 
