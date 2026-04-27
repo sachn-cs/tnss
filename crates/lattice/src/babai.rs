@@ -206,7 +206,7 @@ impl KleinConfig {
 /// Panics in debug mode if the basis is empty or has inconsistent dimensions.
 pub fn reduce_basis_lll(basis: &mut Matrix<BigVector>) {
     let dims = basis.dimensions();
-    debug_assert!(
+    assert!(
         dims.0 > 0 && dims.1 > 0,
         "LLL reduction: basis must be non-empty"
     );
@@ -250,12 +250,16 @@ pub fn reduce_basis_lll(basis: &mut Matrix<BigVector>) {
 /// - Uses `f64` for speed; exact arithmetic not guaranteed
 /// - Division by near-zero values is guarded by `EPSILON`
 /// - Orthogonality is approximate; error accumulates as O(n · ε_machine)
+///
+/// # Panics
+///
+/// Panics if the basis is empty (has zero rows or zero columns).
 pub fn compute_gram_schmidt(basis: &Matrix<BigVector>) -> GsoData {
     let dims = basis.dimensions();
     let num_vectors = dims.0;
     let vector_dim = dims.1;
 
-    debug_assert!(
+    assert!(
         num_vectors > 0 && vector_dim > 0,
         "Gram-Schmidt: basis must be non-empty"
     );
@@ -311,7 +315,7 @@ pub fn compute_gram_schmidt(basis: &Matrix<BigVector>) -> GsoData {
 
         // Compute squared norm ||b_i*||²
         let norm_squared = compute_dot_product(&orthogonal_vector, &orthogonal_vector);
-        debug_assert!(
+        assert!(
             norm_squared >= -EPSILON,
             "Gram-Schmidt: computed negative squared norm ({}) for vector {}",
             norm_squared,
@@ -366,6 +370,10 @@ pub fn compute_gram_schmidt(basis: &Matrix<BigVector>) -> GsoData {
 ///
 /// Time: O(n · d) where n = number of basis vectors, d = dimension
 /// Space: O(n) for coefficient storage
+///
+/// # Panics
+///
+/// Panics if the target or basis is empty, or if their dimensions mismatch.
 pub fn babai_rounding(target: &[i64], gso: &GsoData, basis: &Matrix<BigVector>) -> BabaiResult {
     let num_vectors = gso.dimension();
     let target_dim = target.len();
@@ -450,6 +458,10 @@ pub fn babai_rounding(target: &[i64], gso: &GsoData, basis: &Matrix<BigVector>) 
 ///     t_i ← t_{i+1} - c_i · b_i
 /// b_cl ← target - t_0
 /// ```
+///
+/// # Panics
+///
+/// Panics if the target or basis is empty, or if their dimensions mismatch.
 pub fn babai_nearest_plane(
     target: &[i64],
     gso: &GsoData,
@@ -458,7 +470,7 @@ pub fn babai_nearest_plane(
     let num_vectors = gso.dimension();
     let target_dim = target.len();
 
-    debug_assert!(
+    assert!(
         num_vectors > 0 && target_dim > 0,
         "Babai nearest plane: target and basis must be non-empty"
     );
@@ -548,6 +560,10 @@ pub fn babai_nearest_plane(
 /// * `gso` - Precomputed Gram-Schmidt orthogonalization data
 /// * `basis` - The lattice basis
 /// * `config` - Klein sampling configuration (number of samples, eta, etc.)
+///
+/// # Panics
+///
+/// Panics if the target or basis is empty, or if their dimensions mismatch.
 pub fn klein_sampling(
     target: &[i64],
     gso: &GsoData,
@@ -557,7 +573,7 @@ pub fn klein_sampling(
     let num_vectors = gso.dimension();
     let target_dim = target.len();
 
-    debug_assert!(
+    assert!(
         num_vectors > 0 && target_dim > 0,
         "Klein sampling: target and basis must be non-empty"
     );
@@ -586,7 +602,7 @@ pub fn klein_sampling(
     }
 
     let (best_coeffs, best_distance_sq) =
-        best_result.unwrap_or_else(|| (vec![0i64; num_vectors], f64::INFINITY));
+        best_result.unwrap_or_else(|| (vec![0_i64; num_vectors], f64::INFINITY));
 
     // Reconstruct the lattice point from best coefficients
     let closest_lattice_point = reconstruct_lattice_point(&best_coeffs, basis, target_dim);
@@ -594,7 +610,9 @@ pub fn klein_sampling(
     let best_sample_idx = all_samples
         .iter()
         .enumerate()
-        .min_by(|(_, (_, d1)), (_, (_, d2))| d1.partial_cmp(d2).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|(_, (_, d1)), (_, (_, d2))| {
+            d1.partial_cmp(d2).unwrap_or(std::cmp::Ordering::Equal)
+        })
         .map(|(idx, _)| idx)
         .unwrap_or(0);
 
@@ -677,9 +695,14 @@ fn sample_discrete_gaussian<R: Rng>(rng: &mut R, center: f64, sigma: f64) -> i64
 
     // Rejection sampling from discrete Gaussian
     // We sample from a continuous Gaussian and round, accepting with appropriate probability
-    let max_attempts = 1000;
+    //
+    // **Distribution note:** If all `max_attempts` rejections fail (extremely rare for
+    // reasonable σ), the sampler falls back to deterministic rounding of `center`.
+    // This slightly alters the exact discrete-Gaussian distribution, but the impact
+    // is negligible for typical lattice dimensions.
+    const MAX_ATTEMPTS: usize = 1000;
 
-    for _ in 0..max_attempts {
+    for _ in 0..MAX_ATTEMPTS {
         // Sample from continuous Gaussian N(center, σ²)
         let z: f64 = sample_normal(rng, center, sigma);
 
@@ -829,7 +852,7 @@ pub fn hybrid_cvp_solver(target: &[i64], gso: &GsoData, basis: &Matrix<BigVector
 /// Time: O(n), Space: O(1)
 #[inline]
 fn compute_dot_product(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(
+    assert_eq!(
         a.len(),
         b.len(),
         "dot_product: vector length mismatch ({} vs {})",
@@ -939,7 +962,7 @@ mod tests {
         let basis = identity_basis_2d();
         let gso = compute_gram_schmidt(&basis);
 
-        let target = vec![3i64, 4i64];
+        let target = vec![3_i64, 4_i64];
         let result = babai_rounding(&target, &gso, &basis);
 
         assert_eq!(result.coefficients[0], 3);
@@ -956,7 +979,7 @@ mod tests {
         basis[1] = BigVector::from_vector(vec![Integer::from(1), Integer::from(3)]);
 
         let gso = compute_gram_schmidt(&basis);
-        let target = vec![100i64, 50i64];
+        let target = vec![100_i64, 50_i64];
 
         let result1 = babai_rounding(&target, &gso, &basis);
         let result2 = babai_rounding(&target, &gso, &basis);
@@ -981,7 +1004,7 @@ mod tests {
     fn test_klein_sampling_basic() {
         let basis = identity_basis_2d();
         let gso = compute_gram_schmidt(&basis);
-        let target = vec![3i64, 4i64];
+        let target = vec![3_i64, 4_i64];
 
         let config = KleinConfig::default().with_samples(5);
         let result = klein_sampling(&target, &gso, &basis, &config);
@@ -998,7 +1021,7 @@ mod tests {
         basis[1] = BigVector::from_vector(vec![Integer::from(1), Integer::from(10)]);
 
         let gso = compute_gram_schmidt(&basis);
-        let target = vec![15i64, 15i64];
+        let target = vec![15_i64, 15_i64];
 
         let config = KleinConfig::default().with_samples(20);
         let klein_result = klein_sampling(&target, &gso, &basis, &config);
@@ -1061,7 +1084,7 @@ mod tests {
         basis[1] = BigVector::from_vector(vec![Integer::from(1), Integer::from(4)]);
 
         let gso = compute_gram_schmidt(&basis);
-        let target = vec![10i64, 10i64];
+        let target = vec![10_i64, 10_i64];
 
         let result = hybrid_cvp_solver(&target, &gso, &basis);
 
@@ -1075,7 +1098,7 @@ mod tests {
         basis[0] = BigVector::from_vector(vec![Integer::from(2), Integer::from(1)]);
         basis[1] = BigVector::from_vector(vec![Integer::from(1), Integer::from(3)]);
 
-        let coeffs = vec![3i64, 2i64];
+        let coeffs = vec![3_i64, 2_i64];
         let point = reconstruct_lattice_point(&coeffs, &basis, 2);
 
         // 3*(2,1) + 2*(1,3) = (8, 9)
@@ -1086,8 +1109,8 @@ mod tests {
     #[test]
     fn test_compute_distance_sq() {
         let basis = identity_basis_2d();
-        let target = vec![3i64, 4i64];
-        let coeffs = vec![3i64, 4i64];
+        let target = vec![3_i64, 4_i64];
+        let coeffs = vec![3_i64, 4_i64];
 
         let dist_sq = compute_distance_sq(&target, &coeffs, &basis, 2);
 

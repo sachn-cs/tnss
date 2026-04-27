@@ -1,9 +1,6 @@
 //! Benchmarks for TNSS factorization.
 
-// criterion macros generate undocumented functions; we cannot document them.
-#![allow(missing_docs)]
-
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, black_box, criterion_group};
 use rand::SeedableRng;
 use rug::Integer;
 use tnss_algebra::factor::{self, Config};
@@ -12,7 +9,7 @@ use tnss_lattice::lattice;
 
 /// Benchmark factorizing a small semiprime (91 = 7 × 13).
 fn bench_small_factorization(c: &mut Criterion) {
-    let n = Integer::from(91u64);
+    let n = Integer::from(91_u64);
     let config = Config::default_for_bits(7);
 
     c.bench_function("factor_91", |b| {
@@ -22,7 +19,7 @@ fn bench_small_factorization(c: &mut Criterion) {
 
 /// Benchmark factorizing a medium semiprime (1,022,117 = 1009 × 1013).
 fn bench_medium_factorization(c: &mut Criterion) {
-    let n = Integer::from(1_022_117u64);
+    let n = Integer::from(1_022_117_u64);
     let config = Config::default_for_bits(20);
 
     c.bench_function("factor_1M", |b| {
@@ -43,7 +40,7 @@ fn bench_prime_generation(c: &mut Criterion) {
 
 /// Benchmark Schnorr lattice construction for various dimensions.
 fn bench_lattice_construction(c: &mut Criterion) {
-    let n = Integer::from(91u64);
+    let n = Integer::from(91_u64);
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     c.bench_function("lattice_10", |b| {
@@ -69,12 +66,20 @@ fn bench_lattice_construction(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_small_factorization,
-    bench_medium_factorization,
-    bench_prime_generation,
-    bench_lattice_construction
-);
+/// Benchmark group containing all factorization benchmarks.
+mod benchmark_group {
+    use super::*;
+    criterion_group!(
+        benches,
+        bench_small_factorization,
+        bench_medium_factorization,
+        bench_prime_generation,
+        bench_lattice_construction
+    );
+}
 
-criterion_main!(benches);
+/// Entry point for Criterion benchmarks.
+fn main() {
+    benchmark_group::benches();
+    Criterion::default().final_summary();
+}

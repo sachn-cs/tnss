@@ -102,7 +102,7 @@ impl SliceConfig {
 
     /// Create configuration tuned for TNSS sampling.
     pub fn for_tnss(n_qubits: usize) -> Self {
-        let num_configs = 1usize << n_qubits.min(20);
+        let num_configs = 1_usize << n_qubits.min(20);
         let num_slices = num_threads().max(1);
         let min_configs = (num_configs / num_slices).max(16);
 
@@ -134,7 +134,7 @@ pub fn partition_indices(n_qubits: usize, num_slices: usize) -> Vec<IndexSlice> 
     let remainder = n_qubits % num_slices;
 
     let mut slices = Vec::with_capacity(num_slices);
-    let mut start = 0usize;
+    let mut start = 0_usize;
 
     for slice_id in 0..num_slices {
         let size = base_size + if slice_id < remainder { 1 } else { 0 };
@@ -143,11 +143,11 @@ pub fn partition_indices(n_qubits: usize, num_slices: usize) -> Vec<IndexSlice> 
         let physical_indices: Vec<usize> = (start..end).collect();
 
         // Compute configuration range for this slice.
-        let configs_in_slice = 1usize
+        let configs_in_slice = 1_usize
             .checked_shl(physical_indices.len() as u32)
             .unwrap_or(usize::MAX);
         let shift = base_size.min(20);
-        let multiplier = 1usize.checked_shl(shift as u32).unwrap_or(usize::MAX);
+        let multiplier = 1_usize.checked_shl(shift as u32).unwrap_or(usize::MAX);
         let global_start = slice_id.saturating_mul(multiplier);
         let global_end = global_start.saturating_add(configs_in_slice);
 
@@ -187,10 +187,12 @@ pub fn partition_config_space(n_qubits: usize, num_slices: usize) -> Vec<(usize,
         return Vec::new();
     }
 
-    // Guard against shift overflow (n_qubits >= usize::BITS, e.g. 64 on x86_64).
-    if n_qubits >= usize::BITS as usize {
+    // Guard against shift overflow (n_qubits >= usize::BITS - 1, e.g. 63 on x86_64).
+    // For n_qubits = 63, 1 << 63 is technically representable but leaves no headroom
+    // for downstream arithmetic; use sample-based partitioning instead.
+    if n_qubits >= usize::BITS as usize - 1 {
         // Sample-based partitioning.
-        let samples_per_slice = 1000usize;
+        let samples_per_slice = 1000_usize;
         let total_samples = samples_per_slice * num_slices;
         let mut ranges = Vec::with_capacity(num_slices);
 
@@ -208,14 +210,14 @@ pub fn partition_config_space(n_qubits: usize, num_slices: usize) -> Vec<(usize,
     }
 
     // Safe to shift because n_qubits < usize::BITS.
-    let num_configs = 1usize << n_qubits;
+    let num_configs = 1_usize << n_qubits;
 
     let num_slices = num_slices.min(num_configs).max(1);
     let base_configs = num_configs / num_slices;
     let remainder = num_configs % num_slices;
 
     let mut ranges = Vec::with_capacity(num_slices);
-    let mut start = 0usize;
+    let mut start = 0_usize;
 
     for slice_id in 0..num_slices {
         let size = base_configs + if slice_id < remainder { 1 } else { 0 };
@@ -349,7 +351,7 @@ impl ParallelContractor {
         }
 
         let min_time = times.iter().copied().fold(f64::INFINITY, f64::min);
-        let max_time = times.iter().copied().fold(0.0f64, f64::max);
+        let max_time = times.iter().copied().fold(0.0_f64, f64::max);
         let avg_time = times.iter().sum::<f64>() / times.len() as f64;
 
         // Compute variance.
@@ -409,10 +411,19 @@ fn partition_config_space_as_slices(n_qubits: usize, num_slices: usize) -> Vec<I
 ///
 /// # Returns
 ///
-/// Vector of bit configurations, each as Vec<bool>.
+/// Vector of bit configurations, each as `Vec<bool>`.
 pub fn generate_configs_for_range(range: (usize, usize), n_qubits: usize) -> Vec<Vec<bool>> {
     let (start, end) = range;
-    let count = end.saturating_sub(start);
+
+    if start > end {
+        trace!(
+            "generate_configs_for_range: start ({}) > end ({}), returning empty",
+            start, end
+        );
+        return Vec::new();
+    }
+
+    let count = end - start;
 
     if count == 0 || n_qubits == 0 {
         return Vec::new();
@@ -468,10 +479,10 @@ pub fn index_to_bits(idx: usize, n_bits: usize) -> Vec<bool> {
 
 /// Convert bits to configuration index.
 pub fn bits_to_index(bits: &[bool]) -> usize {
-    let mut idx = 0usize;
+    let mut idx = 0_usize;
     for (i, &bit) in bits.iter().enumerate() {
         if bit {
-            if let Some(shifted) = 1usize.checked_shl(i as u32) {
+            if let Some(shifted) = 1_usize.checked_shl(i as u32) {
                 idx |= shifted;
             }
         }
@@ -549,8 +560,8 @@ where
     T: Send + Clone + PartialEq + Eq + std::hash::Hash,
     F: Fn(&mut dyn rand::RngCore) -> Option<T> + Send + Sync,
 {
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
     use std::collections::HashSet;
 
     let num_slices = config.num_slices.max(1);
@@ -558,7 +569,6 @@ where
 
     // Use deterministic seeds for reproducibility.
     let results: Vec<Vec<T>> = (0..num_slices)
-        .into_iter()
         .map(|slice_id| {
             let mut rng = StdRng::seed_from_u64(12345_u64 + slice_id as u64);
             let mut slice_samples = Vec::with_capacity(samples_per_slice);

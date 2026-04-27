@@ -91,6 +91,7 @@ impl PidParams {
             min_bond: 2,
             max_bond: max_bond.clamp(4, 128),
             target_fraction: 0.65,
+            max_integral: 100.0,
         }
     }
 }
@@ -136,7 +137,7 @@ impl PidState {
     pub fn reset(&mut self, new_bond: usize) {
         self.integral = 0.0;
         self.prev_error = 0.0;
-        self.current_bond = new_bond;
+        self.current_bond = new_bond.max(1);
         self.entropy_history.clear();
     }
 }
@@ -187,6 +188,10 @@ impl AdaptiveBondManager {
     ///
     /// * `entropies` - Measured entropy for each bond (same order as states).
     ///
+    /// # Errors
+    ///
+    /// Returns an error if `entropies.len()` does not match the number of bonds.
+    ///
     /// # Returns
     ///
     /// Vector of new bond dimensions for each bond.
@@ -227,7 +232,9 @@ impl AdaptiveBondManager {
 
         // Update integral with anti-windup (clamped to configurable limit)
         state.integral += error;
-        state.integral = state.integral.clamp(-params.max_integral, params.max_integral);
+        state.integral = state
+            .integral
+            .clamp(-params.max_integral, params.max_integral);
 
         // Compute derivative
         let derivative = error - state.prev_error;
@@ -237,7 +244,7 @@ impl AdaptiveBondManager {
         let adjustment = -(params.kp * error + params.ki * state.integral + params.kd * derivative);
 
         // Compute new bond dimension
-        let bond_change = adjustment.round() as i64;
+        let bond_change = tnss_core::utils::safe_round_to_i64(adjustment);
         let new_bond = if bond_change > 0 {
             state.current_bond.saturating_add(bond_change as usize)
         } else {
@@ -470,7 +477,7 @@ mod tests {
 
         // For 4 equal values, normalized: each gets prob = 0.25
         // S = -4 * 0.25 * ln(0.25) = -ln(0.25) = ln(4) ≈ 1.386
-        assert!((entropy - 4f64.ln()).abs() < 0.01);
+        assert!((entropy - 4_f64.ln()).abs() < 0.01);
     }
 
     #[test]
@@ -496,7 +503,9 @@ mod tests {
         // High entropy should trigger bond increase
         let high_entropy = 3.0; // Higher than target for bond=4
 
-        let new_bonds = manager.update(&[high_entropy]).expect("update should succeed");
+        let new_bonds = manager
+            .update(&[high_entropy])
+            .expect("update should succeed");
 
         // Bond dimension should increase
         assert!(new_bonds[0] >= 4, "Bond should stay same or increase");
@@ -547,7 +556,7 @@ mod tests {
         let entropy = entropy_from_eigenvalues(&eigenvalues);
 
         // S = -4 * 0.25 * ln(0.25) = ln(4)
-        assert!((entropy - 4f64.ln()).abs() < 0.01);
+        assert!((entropy - 4_f64.ln()).abs() < 0.01);
     }
 
     #[test]

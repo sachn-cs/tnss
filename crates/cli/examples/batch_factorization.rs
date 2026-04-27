@@ -8,7 +8,7 @@ fn main() {
 
     // Each entry is (label, factor_a, factor_b); the product is computed at runtime.
     let test_factors = vec![
-        ("91", 7u64, 13u64),
+        ("91", 7_u64, 13_u64),
         ("221", 13, 17),
         ("437", 19, 23),
         ("1517", 37, 41),

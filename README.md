@@ -1,6 +1,6 @@
 # TNSS - Tensor-Network Schnorr's Sieving
 
-[![CI](https://github.com/yourusername/tnss/workflows/CI/badge.svg)](https://github.com/yourusername/tnss/actions)
+[![CI](https://github.com/sachncs/tnss/workflows/CI/badge.svg)](https://github.com/sachncs/tnss/actions)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
 A production-grade workspace implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with modern tensor network methods.
@@ -122,15 +122,15 @@ tnss-cli → all crates
 
 TNSS implements a 7-stage pipeline:
 
-| Stage | Crate | Description |
-|-------|-------|-------------|
-| 1 | `tnss-lattice` | Schnorr lattice construction |
-| 2 | `tnss-lattice` | LLL/BKZ basis reduction |
-| 3 | `tnss-sampler` | Klein sampling for CVP |
-| 4 | `tnss-tensor` | TTN variational ansatz |
-| 5 | `tnss-tensor` | MPO spectral amplification |
-| 6 | `tnss-algebra` | Smoothness verification |
-| 7 | `tnss-algebra` | GF(2) linear algebra + GCD |
+| Stage | Crate          | Description                  |
+| ----- | -------------- | ---------------------------- |
+| 1     | `tnss-lattice` | Schnorr lattice construction |
+| 2     | `tnss-lattice` | LLL/BKZ basis reduction      |
+| 3     | `tnss-sampler` | Klein sampling for CVP       |
+| 4     | `tnss-tensor`  | TTN variational ansatz       |
+| 5     | `tnss-tensor`  | MPO spectral amplification   |
+| 6     | `tnss-algebra` | Smoothness verification      |
+| 7     | `tnss-algebra` | GF(2) linear algebra + GCD   |
 
 ## Safety and Reliability
 
@@ -143,6 +143,7 @@ TNSS implements a 7-stage pipeline:
 ## License
 
 Licensed under either:
+
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 

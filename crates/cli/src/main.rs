@@ -55,7 +55,10 @@ fn run() -> Result<(), String> {
     let n = match Integer::from_str_radix(&args.semiprime, 10) {
         Ok(n) => n,
         Err(e) => {
-            return Err(format!("Error: invalid semiprime '{}': {}", args.semiprime, e));
+            return Err(format!(
+                "Error: invalid semiprime '{}': {}",
+                args.semiprime, e
+            ));
         }
     };
     let bits = n.significant_bits() as usize;

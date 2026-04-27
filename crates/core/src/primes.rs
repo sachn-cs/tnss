@@ -27,6 +27,11 @@ static PRIMES_CACHE: OnceLock<Vec<u64>> = OnceLock::new();
 ///
 /// Time: O(n log log n)
 /// Space: O(n log n)
+///
+/// # Panics
+///
+/// Panics if the sieve fails to generate exactly `n` primes (extremely
+/// unlikely; indicates a bug in the upper-bound estimation).
 #[inline]
 #[must_use]
 pub fn first_n_primes(n: usize) -> Vec<u64> {

@@ -75,6 +75,7 @@ pub enum SignFactor {
 
 impl SignFactor {
     /// Convert to i8: Negative => -1, Zero => 0, Positive => 1.
+    #[inline]
     pub fn as_i8(self) -> i8 {
         match self {
             SignFactor::Negative => -1,
@@ -84,11 +85,13 @@ impl SignFactor {
     }
 
     /// Convert to f64 for energy evaluation.
+    #[inline]
     pub fn as_f64(self) -> f64 {
         self.as_i8() as f64
     }
 
     /// Convert to i64 for exact lattice arithmetic.
+    #[inline]
     pub fn as_i64(self) -> i64 {
         self.as_i8() as i64
     }
@@ -157,8 +160,9 @@ impl CvpHamiltonian {
     /// on-the-fly evaluation. This threshold is tuned for typical memory budgets.
     const PRECOMPUTE_MAX_VARIABLES: usize = 1000;
 
-    /// Panics in debug mode if:
-    /// - Dimensions are inconsistent across inputs
+    /// # Panics
+    ///
+    /// Panics if input dimensions are inconsistent (e.g. `babai_point.len() != target.len()`).
     pub fn new(
         target: &[i64],
         babai_point: &[Integer],
@@ -192,7 +196,7 @@ impl CvpHamiltonian {
 
         // Verify basis dimensions
         for (j, int_vec) in basis_int.iter().enumerate() {
-            debug_assert_eq!(
+            assert_eq!(
                 int_vec.len(),
                 target_dim,
                 "basis_int[{}] has wrong dimension: expected {}, got {}",
@@ -207,7 +211,7 @@ impl CvpHamiltonian {
         for k in 0..target_dim {
             let target_val = target[k] as f64;
             let babai_val = babai_point[k].to_f64();
-            debug_assert!(
+            assert!(
                 babai_val.is_finite(),
                 "babai_point[{}] converted to non-finite value",
                 k
@@ -234,9 +238,18 @@ impl CvpHamiltonian {
         }
         trace!(
             "  Sign factors: {} positive, {} negative, {} zero",
-            sign_factors.iter().filter(|&&s| s == SignFactor::Positive).count(),
-            sign_factors.iter().filter(|&&s| s == SignFactor::Negative).count(),
-            sign_factors.iter().filter(|&&s| s == SignFactor::Zero).count()
+            sign_factors
+                .iter()
+                .filter(|&&s| s == SignFactor::Positive)
+                .count(),
+            sign_factors
+                .iter()
+                .filter(|&&s| s == SignFactor::Negative)
+                .count(),
+            sign_factors
+                .iter()
+                .filter(|&&s| s == SignFactor::Zero)
+                .count()
         );
 
         // Compute temporary f64 basis for precomputation (not stored to avoid redundancy)
@@ -406,6 +419,12 @@ impl CvpHamiltonian {
         energy
     }
 
+    /// Access basis element (j, k) as f64, converting on the fly.
+    #[inline]
+    fn basis_f64(&self, j: usize, k: usize) -> f64 {
+        self.basis_int[j][k] as f64
+    }
+
     /// Standard O(n*d) energy evaluation.
     fn evaluate_energy_standard(&self, configuration: &[bool]) -> f64 {
         let mut total_energy: f64 = 0.0;
@@ -570,15 +589,24 @@ impl CvpHamiltonian {
     ///
     /// # Termination
     ///
-    /// Stops when no single-bit flip improves energy or after `MAX_ITERATIONS`
-    /// (currently 1000) to prevent infinite loops on flat landscapes.
+    /// Stops when no single-bit flip improves energy or after `max_iterations`
+    /// to prevent infinite loops on flat landscapes.
     pub fn local_search_refinement(&self, configuration: &mut [bool], energy: &mut f64) {
+        self.local_search_refinement_with_limit(configuration, energy, 1000)
+    }
+
+    /// Local search with a configurable iteration limit.
+    pub fn local_search_refinement_with_limit(
+        &self,
+        configuration: &mut [bool],
+        energy: &mut f64,
+        max_iterations: usize,
+    ) {
         trace!("Starting local search refinement from energy {:.6}", energy);
         let mut improved = true;
         let mut iterations = 0;
-        const MAX_ITERATIONS: usize = 1000;
 
-        while improved && iterations < MAX_ITERATIONS {
+        while improved && iterations < max_iterations {
             improved = false;
             iterations += 1;
 
@@ -630,7 +658,11 @@ impl CvpHamiltonian {
     ///
     /// A boxed closure that computes the perturbed energy for a given configuration.
     /// The closure is valid only as long as this `CvpHamiltonian` is alive.
-    pub fn with_transverse_field<'a, R: Rng>(&'a self, alpha: f64, rng: &mut R) -> TransverseFieldFn<'a> {
+    pub fn with_transverse_field<'a, R: Rng>(
+        &'a self,
+        alpha: f64,
+        rng: &mut R,
+    ) -> TransverseFieldFn<'a> {
         if alpha <= 0.0 {
             return Box::new(move |bits: &[bool]| self.evaluate_energy(bits));
         }
@@ -664,15 +696,15 @@ mod tests {
 
     fn create_test_hamiltonian() -> CvpHamiltonian {
         // Target: (5, 5)
-        let target = vec![5i64, 5i64];
+        let target = vec![5_i64, 5_i64];
         // Babai point: (3, 3)
         let babai_point = vec![Integer::from(3), Integer::from(3)];
         // Basis: identity (for simplicity)
-        let basis_int = vec![vec![1i64, 0i64], vec![0i64, 1i64]];
+        let basis_int = vec![vec![1_i64, 0_i64], vec![0_i64, 1_i64]];
         // fractional_projections = (0.5, 0.5), coefficients = (0, 0)
         // sign = sign(0.5 - 0) = +1 for both
-        let fractional_projections = vec![0.5f64, 0.5f64];
-        let coefficients = vec![0i64, 0i64];
+        let fractional_projections = vec![0.5_f64, 0.5_f64];
+        let coefficients = vec![0_i64, 0_i64];
 
         CvpHamiltonian::new(
             &target,
@@ -755,13 +787,13 @@ mod tests {
     #[test]
     fn test_sign_near_zero() {
         // Test that sign is zero when μ ≈ c
-        let target = vec![0i64];
+        let target = vec![0_i64];
         let babai_point = vec![Integer::from(0)];
-        let basis_int = vec![vec![1i64]];
+        let basis_int = vec![vec![1_i64]];
 
         // fractional_projections = c exactly → sign = 0
         let fractional_projections = vec![SIGN_EPSILON / 2.0]; // Well within epsilon
-        let coefficients = vec![0i64];
+        let coefficients = vec![0_i64];
 
         let h = CvpHamiltonian::new(
             &target,
@@ -779,13 +811,13 @@ mod tests {
 
     #[test]
     fn test_sign_positive() {
-        let target = vec![0i64];
+        let target = vec![0_i64];
         let babai_point = vec![Integer::from(0)];
-        let basis_int = vec![vec![1i64]];
+        let basis_int = vec![vec![1_i64]];
 
         // fractional_projections > coefficients by more than epsilon
         let fractional_projections = vec![SIGN_EPSILON * 2.0];
-        let coefficients = vec![0i64];
+        let coefficients = vec![0_i64];
 
         let h = CvpHamiltonian::new(
             &target,
@@ -803,13 +835,13 @@ mod tests {
 
     #[test]
     fn test_sign_negative() {
-        let target = vec![0i64];
+        let target = vec![0_i64];
         let babai_point = vec![Integer::from(0)];
-        let basis_int = vec![vec![1i64]];
+        let basis_int = vec![vec![1_i64]];
 
         // fractional_projections < coefficients by more than epsilon
         let fractional_projections = vec![-SIGN_EPSILON * 2.0];
-        let coefficients = vec![0i64];
+        let coefficients = vec![0_i64];
 
         let h = CvpHamiltonian::new(
             &target,
@@ -865,12 +897,12 @@ mod tests {
     #[test]
     fn test_negative_sign_correction() {
         // Test with negative signs
-        let target = vec![0i64, 0i64];
+        let target = vec![0_i64, 0_i64];
         let babai_point = vec![Integer::from(5), Integer::from(5)];
-        let basis_int = vec![vec![1i64, 0i64], vec![0i64, 1i64]];
+        let basis_int = vec![vec![1_i64, 0_i64], vec![0_i64, 1_i64]];
         // fractional_projections < coefficients for both → sign = -1
-        let fractional_projections = vec![-0.5f64, -0.5f64];
-        let coefficients = vec![0i64, 0i64];
+        let fractional_projections = vec![-0.5_f64, -0.5_f64];
+        let coefficients = vec![0_i64, 0_i64];
 
         let h = CvpHamiltonian::new(
             &target,

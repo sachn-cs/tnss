@@ -47,7 +47,7 @@ impl BitMatrix {
     /// Create a new zero matrix with the given dimensions.
     pub fn new(rows: usize, cols: usize) -> Self {
         let words_per_row = cols.div_ceil(WORD_BITS);
-        let data: Vec<Vec<u64>> = (0..rows).map(|_| vec![0u64; words_per_row]).collect();
+        let data: Vec<Vec<u64>> = (0..rows).map(|_| vec![0_u64; words_per_row]).collect();
         Self { rows, cols, data }
     }
 
@@ -69,7 +69,9 @@ impl BitMatrix {
             if row.len() != cols {
                 return Err(Error::Gf2Solver(format!(
                     "row {} length {} does not match expected {}",
-                    row_idx, row.len(), cols
+                    row_idx,
+                    row.len(),
+                    cols
                 )));
             }
             for (col_idx, &val) in row.iter().enumerate() {
@@ -94,32 +96,47 @@ impl BitMatrix {
     }
 
     /// Get the value at position (row, col).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `row` or `col` is out of bounds.
     #[inline]
     pub fn get(&self, row: usize, col: usize) -> bool {
-        debug_assert!(row < self.rows && col < self.cols);
+        assert!(row < self.rows && col < self.cols, "index out of bounds");
         let word_idx = col / WORD_BITS;
         let bit_idx = col % WORD_BITS;
         (self.data[row][word_idx] >> bit_idx) & 1 != 0
     }
 
     /// Set the value at position (row, col).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `row` or `col` is out of bounds.
     #[inline]
     pub fn set(&mut self, row: usize, col: usize, value: bool) {
-        debug_assert!(row < self.rows && col < self.cols);
+        assert!(row < self.rows && col < self.cols, "index out of bounds");
         let word_idx = col / WORD_BITS;
         let bit_idx = col % WORD_BITS;
         if value {
-            self.data[row][word_idx] |= 1u64 << bit_idx;
+            self.data[row][word_idx] |= 1_u64 << bit_idx;
         } else {
-            self.data[row][word_idx] &= !(1u64 << bit_idx);
+            self.data[row][word_idx] &= !(1_u64 << bit_idx);
         }
     }
 
     /// XOR row `target` with row `source` (modifying `target`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `target` or `source` is out of bounds, or if `target == source`.
     #[inline]
     pub fn row_xor(&mut self, target: usize, source: usize) {
-        debug_assert!(target < self.rows && source < self.rows);
-        debug_assert!(target != source, "Cannot XOR a row with itself");
+        assert!(
+            target < self.rows && source < self.rows,
+            "index out of bounds"
+        );
+        assert!(target != source, "Cannot XOR a row with itself");
 
         for word_idx in 0..self.data[target].len() {
             self.data[target][word_idx] ^= self.data[source][word_idx];
@@ -130,7 +147,7 @@ impl BitMatrix {
     #[inline]
     fn find_pivot(&self, start_row: usize, col: usize) -> Option<usize> {
         let word_idx = col / WORD_BITS;
-        let bit_mask = 1u64 << (col % WORD_BITS);
+        let bit_mask = 1_u64 << (col % WORD_BITS);
 
         (start_row..self.rows).find(|&row_idx| self.data[row_idx][word_idx] & bit_mask != 0)
     }
@@ -172,7 +189,7 @@ pub fn gaussian_elimination(matrix: &mut BitMatrix) -> Vec<usize> {
     }
 
     let mut pivots = Vec::new();
-    let mut r = 0usize;
+    let mut r = 0_usize;
 
     for c in 0..matrix.cols {
         if r >= matrix.rows {
@@ -224,17 +241,19 @@ pub fn kernel_basis(bytes: &[Vec<u8>]) -> Vec<Vec<u8>> {
 
     // Build augmented matrix M = [A^T | I_cols] directly in bit-packed form.
     let mut matrix = BitMatrix::new(cols, total_cols);
-    for i in 0..cols {
-        for j in 0..rows {
-            if bytes[j][i] != 0 {
+    for (j, row) in bytes.iter().enumerate() {
+        for (i, val) in row.iter().enumerate() {
+            if *val != 0 {
                 matrix.set(i, j, true);
             }
         }
+    }
+    for i in 0..cols {
         matrix.set(i, rows + i, true); // identity column
     }
 
     // Gaussian elimination on the left block (first `rows` columns).
-    let mut r = 0usize;
+    let mut r = 0_usize;
     for c in 0..rows {
         if r >= cols {
             break;
@@ -255,9 +274,9 @@ pub fn kernel_basis(bytes: &[Vec<u8>]) -> Vec<Vec<u8>> {
     for row_idx in 0..cols {
         let left_is_zero = (0..rows).all(|c| !matrix.get(row_idx, c));
         if left_is_zero {
-            let mut tau = vec![0u8; cols];
-            for c in 0..cols {
-                tau[c] = if matrix.get(row_idx, rows + c) { 1 } else { 0 };
+            let mut tau = vec![0_u8; cols];
+            for (c, tau_c) in tau.iter_mut().enumerate() {
+                *tau_c = if matrix.get(row_idx, rows + c) { 1 } else { 0 };
             }
 
             // Sanity-check the result when running tests or debug builds.
@@ -310,7 +329,7 @@ pub fn matrix_vec_mul(matrix: &[Vec<u8>], vec: &[u8]) -> Vec<u8> {
             row.iter()
                 .zip(vec.iter())
                 .map(|(a, b)| a & b)
-                .fold(0u8, |acc, x| acc ^ x)
+                .fold(0_u8, |acc, x| acc ^ x)
         })
         .collect()
 }
@@ -366,7 +385,8 @@ mod tests {
                 assert!(
                     !matrix.get(r, pivot_col),
                     "Row {} should have 0 in pivot column {}",
-                    r, pivot_col
+                    r,
+                    pivot_col
                 );
             }
         }

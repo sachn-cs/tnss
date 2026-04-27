@@ -57,14 +57,14 @@ impl SchnorrLattice {
     ///
     /// # Mathematical Details
     ///
-    /// The basis matrix B ∈ ℤ^(n+1)×n is constructed as:
-    /// - B[j,j] = f(j) for diagonal entries (randomised weights)
-    /// - B[n,j] = round(10^c · ln p_j) for the last row (logarithmic weights)
-    /// - B[i,j] = 0 otherwise
+    /// The basis matrix `B ∈ ℤ^(n+1)×n` is constructed as:
+    /// - `B[j,j] = f(j)` for diagonal entries (randomised weights)
+    /// - `B[n,j] = round(10^c · ln p_j)` for the last row (logarithmic weights)
+    /// - `B[i,j] = 0` otherwise
     ///
-    /// The target vector t ∈ ℤ^(n+1) has:
-    /// - t[i] = 0 for i < n
-    /// - t[n] = round(10^c · ln N)
+    /// The target vector `t ∈ ℤ^(n+1)` has:
+    /// - `t[i] = 0` for `i < n`
+    /// - `t[n] = round(10^c · ln N)`
     ///
     /// # Arguments
     ///
@@ -88,12 +88,12 @@ impl SchnorrLattice {
         scaling_param: f64,
         rng: &mut R,
     ) -> Self {
-        debug_assert!(dimension >= 2, "lattice dimension must be at least 2");
-        debug_assert!(
+        assert!(dimension >= 2, "lattice dimension must be at least 2");
+        assert!(
             scaling_param.is_finite() && scaling_param > 0.0,
             "scaling parameter must be positive and finite"
         );
-        debug_assert!(*semiprime > Integer::ZERO, "semiprime must be positive");
+        assert!(*semiprime > Integer::ZERO, "semiprime must be positive");
 
         trace!(
             "Constructing Schnorr lattice: dimension={}, scaling={:.3}",
@@ -118,7 +118,7 @@ impl SchnorrLattice {
 
         // Precompute scaling factor
         let scale = 10_f64.powf(scaling_param);
-        debug_assert!(
+        assert!(
             scale.is_finite() && scale > 0.0,
             "scale computation overflow"
         );
@@ -354,8 +354,8 @@ mod tests {
     #[test]
     fn test_lattice_dimensions() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 5usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 5_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         assert_eq!(lattice.dimension, dimension);
@@ -370,8 +370,8 @@ mod tests {
     #[test]
     fn test_lattice_invariants() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 10usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 10_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         assert!(lattice.verify_invariants(), "Lattice invariants violated");
@@ -379,8 +379,8 @@ mod tests {
 
     #[test]
     fn test_determinism() {
-        let seed = 12345u64;
-        let semiprime = Integer::from(91u64);
+        let seed = 12345_u64;
+        let semiprime = Integer::from(91_u64);
 
         let mut rng1 = ChaCha8Rng::seed_from_u64(seed);
         let lattice1 = SchnorrLattice::new(5, &semiprime, 1.0, &mut rng1);
@@ -408,8 +408,8 @@ mod tests {
     #[test]
     fn test_diagonal_nonzero() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 8usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 8_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         for j in 0..dimension {
@@ -425,8 +425,8 @@ mod tests {
     fn test_last_row_correctness() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
         let scaling_param = 1.5;
-        let dimension = 5usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 5_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, scaling_param, &mut rng);
 
         let scale = 10_f64.powf(scaling_param);
@@ -455,8 +455,8 @@ mod tests {
     #[test]
     fn test_target_structure() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 5usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 5_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         // First n entries should be 0
@@ -465,15 +465,15 @@ mod tests {
         }
 
         // Last entry should be round(10^c * ln(N))
-        let scale = 10.0f64;
-        let expected_last = safe_round_to_i64(scale * 91f64.ln());
+        let scale = 10.0_f64;
+        let expected_last = safe_round_to_i64(scale * 91_f64.ln());
         assert_eq!(lattice.target[dimension], expected_last);
     }
 
     #[test]
     fn test_diagonal_weights_permutation() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 10usize;
+        let dimension = 10_usize;
 
         let weights = generate_diagonal_weights(dimension, &mut rng);
 
@@ -495,12 +495,12 @@ mod tests {
     #[test]
     fn test_approximate_natural_log() {
         // Test exact conversion path
-        let small = Integer::from(100u64);
+        let small = Integer::from(100_u64);
         let log_small = approximate_natural_log(&small);
-        assert!((log_small - 100f64.ln()).abs() < 0.001);
+        assert!((log_small - 100_f64.ln()).abs() < 0.001);
 
         // Test that it's positive for positive inputs
-        let large = Integer::from(1_000_000u64);
+        let large = Integer::from(1_000_000_u64);
         let log_large = approximate_natural_log(&large);
         assert!(log_large > 0.0);
     }
@@ -508,8 +508,8 @@ mod tests {
     #[test]
     fn test_various_scaling_params() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 5usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 5_usize;
+        let semiprime = Integer::from(91_u64);
 
         for scaling_param in [0.5, 1.0, 1.5, 2.0].iter() {
             let lattice = SchnorrLattice::new(dimension, &semiprime, *scaling_param, &mut rng);
@@ -524,8 +524,8 @@ mod tests {
     #[test]
     fn test_large_dimension() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 50usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 50_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         assert_eq!(lattice.dimension, dimension);
@@ -535,8 +535,8 @@ mod tests {
     #[test]
     fn test_basis_structure() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let dimension = 4usize;
-        let semiprime = Integer::from(91u64);
+        let dimension = 4_usize;
+        let semiprime = Integer::from(91_u64);
         let lattice = SchnorrLattice::new(dimension, &semiprime, 1.0, &mut rng);
 
         // Check that off-diagonal, non-last entries are zero

@@ -237,7 +237,7 @@ fn extreme_pruning_enum(
     let block_size = block_end - k;
     let mut best_result: Option<Vec<i64>> = None;
     let mut best_norm_sq = f64::INFINITY;
-    let mut total_nodes = 0usize;
+    let mut total_nodes = 0_usize;
 
     // Compute Gaussian heuristic for expected shortest length
     let gh_length = gaussian_heuristic(gso, k, block_end);
@@ -293,7 +293,7 @@ fn extreme_pruning_enum(
             tours_completed: config.num_tours,
             found_vector: found,
             shortest_vector_norm: if found { best_norm_sq.sqrt() } else { 0.0 },
-            pruning_efficiency: Some(total_nodes as f64 / (1u64 << block_size) as f64),
+            pruning_efficiency: Some(total_nodes as f64 / (1_u64 << block_size) as f64),
             ..Default::default()
         },
     }
@@ -311,7 +311,7 @@ fn discrete_pruning_enum(
     let block_size = block_end - k;
     let mut best_result: Option<Vec<i64>> = None;
     let mut best_norm_sq = f64::INFINITY;
-    let mut total_nodes = 0usize;
+    let mut total_nodes = 0_usize;
 
     // Compute pruning bounds using ball-box intersections
     let bounds = compute_discrete_bounds(gso, k, block_end, config);
@@ -368,11 +368,11 @@ fn single_pruned_enum(
     let mut stack: Vec<EnumNode> = vec![EnumNode {
         level: block_size,
         partial_norm_sq: 0.0,
-        coeffs: vec![0i64; block_size],
+        coeffs: vec![0_i64; block_size],
     }];
 
     let mut best_result: Option<(Vec<i64>, f64)> = None;
-    let mut nodes_visited = 0usize;
+    let mut nodes_visited = 0_usize;
 
     while let Some(node) = stack.pop() {
         nodes_visited += 1;
@@ -462,7 +462,7 @@ fn gaussian_heuristic(gso: &GsoData, k: usize, block_end: usize) -> f64 {
     let block_size = (block_end - k) as f64;
 
     // Volume of block
-    let mut volume = 1.0f64;
+    let mut volume = 1.0_f64;
     for i in k..block_end {
         volume *= gso.squared_norms[i].sqrt();
     }
@@ -500,7 +500,7 @@ fn compute_volume_ratio(gso: &GsoData, k: usize, block_end: usize) -> f64 {
     let block_size = block_end - k;
 
     // Product of GSO norms
-    let mut product = 1.0f64;
+    let mut product = 1.0_f64;
     for i in k..block_end {
         product *= gso.squared_norms[i].sqrt();
     }
@@ -533,9 +533,7 @@ fn gamma(x: f64) -> f64 {
     }
 
     let result = {
-        if approx_eq(x, 1.0) {
-            1.0
-        } else if approx_eq(x, 2.0) {
+        if approx_eq(x, 1.0) || approx_eq(x, 2.0) {
             1.0
         } else if approx_eq(x, 3.0) {
             2.0
@@ -580,7 +578,11 @@ fn gamma(x: f64) -> f64 {
 /// Safe floor with NaN/inf handling.
 fn safe_floor_to_i64(x: f64) -> i64 {
     if !x.is_finite() {
-        return if x.is_sign_negative() { i64::MIN } else { i64::MAX };
+        return if x.is_sign_negative() {
+            i64::MIN
+        } else {
+            i64::MAX
+        };
     }
     let f = x.floor();
     if f > i64::MAX as f64 {
@@ -595,7 +597,11 @@ fn safe_floor_to_i64(x: f64) -> i64 {
 /// Safe ceil with NaN/inf handling.
 fn safe_ceil_to_i64(x: f64) -> i64 {
     if !x.is_finite() {
-        return if x.is_sign_negative() { i64::MIN } else { i64::MAX };
+        return if x.is_sign_negative() {
+            i64::MIN
+        } else {
+            i64::MAX
+        };
     }
     let c = x.ceil();
     if c > i64::MAX as f64 {

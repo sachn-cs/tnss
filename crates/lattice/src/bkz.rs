@@ -346,12 +346,20 @@ pub fn bkz_reduce(basis: &mut Matrix<BigVector>, config: &BKZConfig) -> BKZStats
     let pruning_config = config.pruning_config();
 
     for _tour in 0..config.max_tours {
-        trace!("  BKZ tour {}/{}", stats.tours_completed + 1, config.max_tours);
+        trace!(
+            "  BKZ tour {}/{}",
+            stats.tours_completed + 1,
+            config.max_tours
+        );
 
         let improved = bkz_single_tour(basis, &mut gso, config, &pruning_config, &mut stats);
 
         let current_potential = compute_potential(&gso);
-        let (abort, improvement) = bkz_should_abort(prev_potential, current_potential, config.early_abort_threshold);
+        let (abort, improvement) = bkz_should_abort(
+            prev_potential,
+            current_potential,
+            config.early_abort_threshold,
+        );
 
         if abort {
             trace!(
@@ -511,11 +519,18 @@ fn find_best_in_small_block(gso: &GsoData, k: usize, block_end: usize) -> Option
     }
 
     // Generate all combinations
-    let num_combinations = coeffs.len().checked_pow(block_size as u32)
+    let num_combinations = coeffs
+        .len()
+        .checked_pow(block_size as u32)
         .unwrap_or(usize::MAX);
 
+    // Guard against overflow or unreasonably large enumeration
+    if num_combinations == usize::MAX || num_combinations > 10_000_000 {
+        return None;
+    }
+
     for idx in 0..num_combinations {
-        let mut combination = vec![0i64; block_size];
+        let mut combination = vec![0_i64; block_size];
         let mut temp = idx;
 
         for val in combination.iter_mut() {
@@ -550,7 +565,7 @@ fn enumerate_branch_bound(gso: &GsoData, k: usize, block_end: usize) -> Option<V
 
     // Try each basis vector in block
     for i in 0..block_size {
-        let mut coeffs = vec![0i64; block_size];
+        let mut coeffs = vec![0_i64; block_size];
         coeffs[i] = 1;
 
         let len_sq = compute_projected_length(gso, k, block_end, &coeffs);
@@ -575,7 +590,7 @@ fn enumerate_branch_bound(gso: &GsoData, k: usize, block_end: usize) -> Option<V
     // Try pairs
     for i in 0..block_size {
         for j in (i + 1)..block_size {
-            let mut coeffs = vec![0i64; block_size];
+            let mut coeffs = vec![0_i64; block_size];
             coeffs[i] = 1;
             coeffs[j] = 1;
 
@@ -671,7 +686,7 @@ fn enumerate_with_bound(
             return;
         }
 
-        for &val in &[-1i64, 0, 1] {
+        for &val in &[-1_i64, 0, 1] {
             state.current[depth] = val;
 
             let partial_len = if val != 0 {
@@ -689,12 +704,11 @@ fn enumerate_with_bound(
     }
 
     let ctx = DfsContext { gso, k, block_end };
-    let mut current = vec![0i64; block_size];
+    let mut current = vec![0_i64; block_size];
     let mut state = DfsState {
         current: &mut current,
     };
-    dfs(&ctx, &mut state, 0, 0.0, &mut best_len_sq, &mut best_coeffs,
-    );
+    dfs(&ctx, &mut state, 0, 0.0, &mut best_len_sq, &mut best_coeffs);
 
     best_coeffs
 }
@@ -780,7 +794,7 @@ fn insert_vector(basis: &mut Matrix<BigVector>, coeffs: Vec<i64>, k: usize) {
 
     // Linear independence check: the coefficient for basis[k] must be non-zero,
     // otherwise the new vector lies in the span of the remaining basis vectors.
-    if coeffs.get(0) == Some(&0) {
+    if coeffs.first() == Some(&0) {
         return;
     }
 
@@ -886,7 +900,10 @@ mod tests {
         let stats = bkz_reduce(&mut basis, &config);
 
         // Identity basis should require minimal changes
-        assert!(stats.tours_completed >= 1, "BKZ should perform at least one tour");
+        assert!(
+            stats.tours_completed >= 1,
+            "BKZ should perform at least one tour"
+        );
     }
 
     #[test]

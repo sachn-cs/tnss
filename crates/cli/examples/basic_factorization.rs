@@ -18,7 +18,7 @@ fn main() {
             }
         }
     } else {
-        Integer::from(91u64)
+        Integer::from(91_u64)
     };
 
     let bits = n.significant_bits() as usize;

@@ -147,6 +147,16 @@ pub struct Config {
 
 impl Config {
     /// Sensible defaults for a given bit size.
+    ///
+    /// # Lattice dimension heuristic
+    ///
+    /// The lattice dimension `n` grows slowly with bit size to balance
+    /// relation-finding probability against LLL runtime:
+    /// - ≤ 20 bits: 6 (small semiprimes, fast reduction)
+    /// - ≤ 30 bits: 8 (moderate size, good relation density)
+    /// - ≤ 40 bits: 12 (larger basis needed for smooth relations)
+    /// - ≤ 60 bits: 16 (high-dimensional search space)
+    /// - > 60 bits: 20 (maximum practical dimension for this implementation)
     pub fn default_for_bits(bits: usize) -> Self {
         let n = if bits <= 20 {
             6
@@ -294,6 +304,11 @@ pub struct FactorResult {
 /// # Returns
 ///
 /// `Ok(FactorResult)` on success, `Err(Error::InsufficientSmoothRelations)` if max CVPs exhausted.
+///
+/// # Errors
+///
+/// Returns `Err(Error::InsufficientSmoothRelations)` if not enough smooth
+/// relations are found after exhausting all CVP instances.
 pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
     let start_time = Instant::now();
     let bits = n.significant_bits() as usize;
@@ -318,7 +333,7 @@ pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
     let mut rng = ChaCha8Rng::seed_from_u64(cfg.seed);
 
     let mut sr_pairs: Vec<SrPair> = Vec::new();
-    let mut cvp_count = 0usize;
+    let mut cvp_count = 0_usize;
     let mut seen = HashSet::<(Integer, Integer)>::new();
 
     // Need π2 + 2 sr-pairs for the GF(2) system
@@ -326,13 +341,11 @@ pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
 
     // Track convergence for early termination
     let mut prev_energy = f64::INFINITY;
-    let mut convergence_count = 0usize;
+    let mut convergence_count = 0_usize;
 
     while cvp_count < cfg.max_cvp {
         // Wall-clock timeout check
-        if cfg.max_wall_time_secs > 0
-            && start_time.elapsed().as_secs() >= cfg.max_wall_time_secs
-        {
+        if cfg.max_wall_time_secs > 0 && start_time.elapsed().as_secs() >= cfg.max_wall_time_secs {
             debug!(
                 "Timeout after {}s (max {}s)",
                 start_time.elapsed().as_secs(),
@@ -344,8 +357,7 @@ pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
         let cvp_start = Instant::now();
 
         // Stage 1 & 2: Build lattice and reduce
-        let (lattice, babai, hamiltonian) =
-            build_and_reduce_lattice(n, cfg, &mut rng, &mut stats)?;
+        let (lattice, babai, hamiltonian) = build_and_reduce_lattice(n, cfg, &mut rng, &mut stats)?;
 
         // Stage 3: Sampling with optimizations
         let samples = sample_configurations(&hamiltonian, cfg, &mut rng, &mut stats);
@@ -369,18 +381,16 @@ pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
         }
 
         // Stage 4: Process samples and build smooth relations
-        let found_this_cvp = process_samples_for_relations(
-            &samples,
-            &hamiltonian,
-            &lattice,
-            &babai,
+        let ctx = ProcessSamplesCtx {
+            hamiltonian: &hamiltonian,
+            lattice: &lattice,
+            babai: &babai,
             n,
-            &basis,
+            basis: &basis,
             cfg,
-            &mut seen,
-            &mut sr_pairs,
-            &mut stats,
-        );
+        };
+        let found_this_cvp =
+            process_samples_for_relations(&samples, &ctx, &mut seen, &mut sr_pairs, &mut stats);
 
         cvp_count += 1;
         stats.cvp_instances = cvp_count;
@@ -426,7 +436,11 @@ fn build_and_reduce_lattice<R: Rng>(
     cfg: &Config,
     rng: &mut R,
     stats: &mut PipelineStats,
-) -> Result<(SchnorrLattice, tnss_lattice::babai::BabaiResult, CvpHamiltonian)> {
+) -> Result<(
+    SchnorrLattice,
+    tnss_lattice::babai::BabaiResult,
+    CvpHamiltonian,
+)> {
     let lattice_start = Instant::now();
     let mut lattice = SchnorrLattice::new(cfg.n, n, cfg.c, rng);
     stats.lattice_time_ms += lattice_start.elapsed().as_secs_f64() * 1000.0;
@@ -462,13 +476,12 @@ fn build_and_reduce_lattice<R: Rng>(
     let gso = compute_gram_schmidt(&lattice.basis);
     let babai = babai_rounding(&lattice.target, &gso, &lattice.basis);
 
-    let (basis_int, _basis_f64) =
-        extract_basis_representations(&lattice.basis, lattice.dimension + 1)?;
+    let basis_reps = extract_basis_representations(&lattice.basis, lattice.dimension + 1)?;
 
     let hamiltonian = CvpHamiltonian::new(
         &lattice.target,
         &babai.closest_lattice_point,
-        &basis_int,
+        &basis_reps.int,
         &babai.fractional_projections,
         &babai.coefficients,
     );
@@ -493,40 +506,65 @@ fn sample_configurations<R: Rng>(
     samples
 }
 
+/// Shared inputs for processing samples into smooth relations.
+struct ProcessSamplesCtx<'a> {
+    /// The Hamiltonian being sampled.
+    hamiltonian: &'a CvpHamiltonian,
+    /// The reduced Schnorr lattice.
+    lattice: &'a SchnorrLattice,
+    /// Babai rounding results.
+    babai: &'a tnss_lattice::babai::BabaiResult,
+    /// The semiprime to factor.
+    n: &'a Integer,
+    /// Smoothness basis for relation testing.
+    basis: &'a SmoothnessBasis,
+    /// Pipeline configuration.
+    cfg: &'a Config,
+}
+
 /// Stage 4: Process samples and accumulate smooth relations.
 fn process_samples_for_relations(
     samples: &[(Vec<bool>, f64)],
-    hamiltonian: &CvpHamiltonian,
-    lattice: &SchnorrLattice,
-    babai: &tnss_lattice::babai::BabaiResult,
-    n: &Integer,
-    basis: &SmoothnessBasis,
-    cfg: &Config,
+    ctx: &ProcessSamplesCtx<'_>,
     seen: &mut HashSet<(Integer, Integer)>,
     sr_pairs: &mut Vec<SrPair>,
     stats: &mut PipelineStats,
 ) -> usize {
     let smoothness_start = Instant::now();
-    let mut found_this_cvp = 0usize;
+    let mut found_this_cvp = 0_usize;
 
     const SLICE_THRESHOLD: usize = 100;
-    let sample_results: Vec<Option<SrPair>> = if cfg.enable_index_slicing && samples.len() > SLICE_THRESHOLD
-    {
-        use rayon::prelude::*;
-        samples
-            .par_iter()
-            .map(|(bits, _energy)| {
-                process_sample(bits, hamiltonian, lattice, babai, n, basis)
-            })
-            .collect()
-    } else {
-        samples
-            .iter()
-            .map(|(bits, _energy)| {
-                process_sample(bits, hamiltonian, lattice, babai, n, basis)
-            })
-            .collect()
-    };
+    let sample_results: Vec<Option<SrPair>> =
+        if ctx.cfg.enable_index_slicing && samples.len() > SLICE_THRESHOLD {
+            use rayon::prelude::*;
+            samples
+                .par_iter()
+                .map(|(bits, _energy)| {
+                    process_sample(
+                        bits,
+                        ctx.hamiltonian,
+                        ctx.lattice,
+                        ctx.babai,
+                        ctx.n,
+                        ctx.basis,
+                    )
+                })
+                .collect()
+        } else {
+            samples
+                .iter()
+                .map(|(bits, _energy)| {
+                    process_sample(
+                        bits,
+                        ctx.hamiltonian,
+                        ctx.lattice,
+                        ctx.babai,
+                        ctx.n,
+                        ctx.basis,
+                    )
+                })
+                .collect()
+        };
 
     for sr in sample_results.into_iter().flatten() {
         let key = (sr.u.clone(), sr.w.clone());
@@ -557,13 +595,8 @@ fn attempt_factor_extraction(
     );
 
     let la_start = Instant::now();
-    let result = try_extract_factors_optimized(
-        n,
-        sr_pairs,
-        cfg.pi_2,
-        cfg.combination_trials,
-        basis,
-    );
+    let result =
+        try_extract_factors_optimized(n, sr_pairs, cfg.pi_2, cfg.combination_trials, basis);
     stats.linear_algebra_time_ms += la_start.elapsed().as_secs_f64() * 1000.0;
 
     if let Some((p, q)) = result {
@@ -592,7 +625,13 @@ fn sample_with_ttn<R: Rng>(
 
     // Create TTN with configuration
     let ttn_config = cfg.ttn_config();
-    let mut ttn = TreeTensorNetwork::new_with_config(n_vars, &ttn_config, rng);
+    let mut ttn = match TreeTensorNetwork::new_with_config(n_vars, &ttn_config, rng) {
+        Ok(t) => t,
+        Err(e) => {
+            debug!("TTN creation failed: {}", e);
+            return Vec::new();
+        }
+    };
 
     // Quick optimization sweep with adaptive bonds
     for _ in 0..10 {
@@ -655,14 +694,9 @@ fn sample_with_index_slicing<R: Rng>(
     };
 
     // Sort by energy, filtering out NaN, and return top gamma
-    let mut sorted: Vec<(Vec<bool>, f64)> = results
-        .into_iter()
-        .filter(|(_, e)| !e.is_nan())
-        .collect();
-    sorted.sort_by(|a, b| {
-        a.1.partial_cmp(&b.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let mut sorted: Vec<(Vec<bool>, f64)> =
+        results.into_iter().filter(|(_, e)| !e.is_nan()).collect();
+    sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     sorted.truncate(cfg.gamma);
     sorted
 }
@@ -701,6 +735,9 @@ fn process_sample(
     let e: Vec<i64> = (0..lattice.dimension)
         .map(|j| {
             let f_j = lattice.diagonal_weights[j];
+            if f_j == 0 {
+                return None;
+            }
             let b_j = &point[j];
             let q = Integer::from(b_j / f_j);
             q.to_i64()
@@ -751,31 +788,33 @@ fn sample_low_energy_internal<R: Rng>(
     results
 }
 
-/// Extract both exact `i64` and approximate `f64` representations of a basis.
+/// Integer representation of a lattice basis.
+struct BasisInt {
+    /// Basis vectors as i64 coordinates.
+    int: Vec<Vec<i64>>,
+}
+
+/// Extract exact `i64` representations of a basis.
 fn extract_basis_representations(
     basis: &lll_rs::matrix::Matrix<lll_rs::vector::BigVector>,
     dim: usize,
-) -> Result<(Vec<Vec<i64>>, Vec<Vec<f64>>)> {
+) -> Result<BasisInt> {
     let (cols, _) = basis.dimensions();
     let mut int = Vec::with_capacity(cols);
-    let mut f64s = Vec::with_capacity(cols);
 
     for col in 0..cols {
         let mut col_int = Vec::with_capacity(dim);
-        let mut col_f64 = Vec::with_capacity(dim);
         for row in 0..dim {
             let v = &basis[col][row];
             let i = v.to_i64().ok_or_else(|| {
                 Error::NumericalOverflow("basis element does not fit in i64".to_string())
             })?;
             col_int.push(i);
-            col_f64.push(v.to_f64());
         }
         int.push(col_int);
-        f64s.push(col_f64);
     }
 
-    Ok((int, f64s))
+    Ok(BasisInt { int })
 }
 
 /// Optimized factor extraction with parallel kernel computation.
@@ -802,7 +841,7 @@ fn try_extract_factors_optimized(
             })
             .collect()
     } else {
-        let mut matrix: Vec<Vec<u8>> = vec![vec![0u8; cols]; rows];
+        let mut matrix: Vec<Vec<u8>> = vec![vec![0_u8; cols]; rows];
         for (i, row) in matrix.iter_mut().enumerate().take(rows) {
             for (j, sr) in sr_pairs.iter().enumerate() {
                 row[j] = ((sr.e_w[i] + sr.e_u[i]) % 2) as u8;
@@ -828,9 +867,9 @@ fn try_extract_factors_optimized(
 
     if try_basis_parallel {
         use rayon::prelude::*;
-        let result = kernel.par_iter().find_map_first(|tau| {
-            try_tau_vector(n, tau, sr_pairs, pi_2, basis)
-        });
+        let result = kernel
+            .par_iter()
+            .find_map_first(|tau| try_tau_vector(n, tau, sr_pairs, pi_2, basis));
         if result.is_some() {
             return result;
         }
@@ -846,7 +885,7 @@ fn try_extract_factors_optimized(
     // Try structured combinations
     for window_size in 2..=kernel.len().min(5) {
         for start in 0..=kernel.len().saturating_sub(window_size) {
-            let mut tau = vec![0u8; cols];
+            let mut tau = vec![0_u8; cols];
             for b_vec in kernel.iter().skip(start).take(window_size) {
                 for (i, &v) in b_vec.iter().enumerate() {
                     tau[i] ^= v;
@@ -866,7 +905,7 @@ fn try_extract_factors_optimized(
     let mut rng = ChaCha8Rng::seed_from_u64(42);
 
     for trial in 0..combination_trials {
-        let mut tau = vec![0u8; cols];
+        let mut tau = vec![0_u8; cols];
         let inclusion_prob = 0.3 + 0.4 * (trial as f64 / combination_trials as f64);
         for b_vec in &kernel {
             if rng.random::<f64>() < inclusion_prob {
@@ -1002,7 +1041,7 @@ mod tests {
 
     #[test]
     fn test_empty_tau() {
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(5);
         let sr_pairs: Vec<SrPair> = vec![];
         let tau = vec![];

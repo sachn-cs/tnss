@@ -32,11 +32,11 @@
 use crate::babai::{GsoData, compute_gram_schmidt};
 use crate::consts::EPSILON;
 use lll_rs::matrix::Matrix;
-use tnss_core::utils::safe_round_to_i64;
 use lll_rs::vector::BigVector;
 use log::{debug, trace};
 use rug::Integer;
 use std::cmp::{max, min};
+use tnss_core::utils::safe_round_to_i64;
 
 /// Segment LLL configuration.
 #[derive(Debug, Clone)]
@@ -156,10 +156,7 @@ impl Segment {
 /// # Returns
 ///
 /// Statistics about the reduction process.
-pub fn segment_reduce(
-    basis: &mut Matrix<BigVector>,
-    config: &SegmentLLLConfig,
-) -> SegmentLLLStats {
+pub fn segment_reduce(basis: &mut Matrix<BigVector>, config: &SegmentLLLConfig) -> SegmentLLLStats {
     let start_time = std::time::Instant::now();
     let dims = basis.dimensions();
     let n = dims.0;
@@ -265,7 +262,7 @@ fn sequential_local_lll(
     segments: &[Segment],
     config: &SegmentLLLConfig,
 ) -> usize {
-    let mut total_changes = 0usize;
+    let mut total_changes = 0_usize;
 
     for segment in segments.iter() {
         let changes = local_lll_on_segment(basis, segment, config);
@@ -321,8 +318,8 @@ fn local_lll_on_segment(
         return 0;
     }
 
-    let mut changes = 0usize;
-    let mut k = 1usize;
+    let mut changes = 0_usize;
+    let mut k = 1_usize;
 
     while k < size {
         // Size reduction
@@ -506,11 +503,7 @@ fn compute_squared_norm(basis: &Matrix<BigVector>, idx: usize) -> Option<f64> {
         })
         .sum();
 
-    if has_non_finite {
-        None
-    } else {
-        Some(result)
-    }
+    if has_non_finite { None } else { Some(result) }
 }
 
 /// Swap two basis vectors.
@@ -529,7 +522,7 @@ fn apply_size_reductions(
     pairs: impl Iterator<Item = (usize, usize)>,
     eta: f64,
 ) -> usize {
-    let mut changes = 0usize;
+    let mut changes = 0_usize;
     for (k, j) in pairs {
         if size_reduce_local(basis, 0, k, j, eta) {
             changes += 1;
@@ -547,8 +540,11 @@ fn size_reduce_across_segments(
     let pairs = (1..segments.len()).flat_map(|i| {
         let prev_end = segments[i - 1].end;
         let curr_start = segments[i].start;
-        (curr_start..segments[i].end)
-            .flat_map(move |k| (prev_end.saturating_sub(5)..prev_end).rev().map(move |j| (k, j)))
+        (curr_start..segments[i].end).flat_map(move |k| {
+            (prev_end.saturating_sub(5)..prev_end)
+                .rev()
+                .map(move |j| (k, j))
+        })
     });
     apply_size_reductions(basis, pairs, config.eta)
 }
@@ -596,7 +592,7 @@ pub fn progressive_segment_lll(
     let start_time = std::time::Instant::now();
 
     // Start with small segments
-    let mut current_size = 16usize;
+    let mut current_size = 16_usize;
     while current_size <= target_segment_size {
         let config = SegmentLLLConfig {
             segment_size: current_size,

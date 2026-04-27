@@ -104,8 +104,12 @@ impl SmoothnessBasis {
     ///
     /// Time: O(n log log n) where n is an upper bound on the pi_2-th prime
     /// Space: O(n) for the sieve
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pi_2 == 0` (the basis must contain at least one prime).
     pub fn new(pi_2: usize) -> Self {
-        debug_assert!(pi_2 > 0, "Basis must contain at least one prime");
+        assert!(pi_2 > 0, "Basis must contain at least one prime");
 
         let primes = first_n_primes(pi_2);
         let len = primes.len();
@@ -121,16 +125,19 @@ impl SmoothnessBasis {
     }
 
     /// Return the number of primes in the basis.
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Check if the basis is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
     /// Get a prime from the basis.
+    #[inline]
     pub fn get(&self, index: usize) -> Option<u64> {
         self.primes.get(index).copied()
     }
@@ -169,7 +176,7 @@ pub fn factor_smooth(n: &Integer, basis: &SmoothnessBasis) -> Option<Vec<u32>> {
     }
 
     // Preallocate exponent vector with sign bit
-    let mut exponents = vec![0u32; basis.len() + 1];
+    let mut exponents = vec![0_u32; basis.len() + 1];
     let mut rem = n.clone();
 
     // Handle sign bit
@@ -250,7 +257,7 @@ pub fn try_build_sr_pair(
     n: &Integer,
     basis: &SmoothnessBasis,
 ) -> Option<SrPair> {
-    debug_assert_eq!(
+    assert_eq!(
         e.len(),
         primes.len(),
         "e and primes must have same length: {} vs {}",
@@ -277,7 +284,7 @@ pub fn try_build_sr_pair(
                 u *= power;
             }
             Ordering::Less => {
-                let exp = u32::try_from(-ej).ok()?;
+                let exp = ej.checked_neg().and_then(|x| u32::try_from(x).ok())?;
                 let power = pj.pow(exp);
                 v *= power;
             }
@@ -349,7 +356,7 @@ pub fn verify_sr_pair(pair: &SrPair, e: &[i64], primes: &[u64], n: &Integer) -> 
 /// or prime exponents).
 fn reconstruct_from_exponents(exponents: &[u32], primes: &[u64]) -> Integer {
     assert!(
-        exponents.len() >= primes.len() + 1,
+        exponents.len() > primes.len(),
         "exponents length {} must be at least primes.len() + 1 = {}",
         exponents.len(),
         primes.len() + 1
@@ -380,7 +387,7 @@ mod tests {
     fn test_factor_smooth_positive() {
         let basis = SmoothnessBasis::new(5);
         // n = 2² · 3 · 5 = 60
-        let n = Integer::from(60u64);
+        let n = Integer::from(60_u64);
         let exp = factor_smooth(&n, &basis).unwrap();
 
         assert_eq!(exp[0], 0); // positive
@@ -394,7 +401,7 @@ mod tests {
     #[test]
     fn test_factor_smooth_negative() {
         let basis = SmoothnessBasis::new(5);
-        let n = Integer::from(-30i64);
+        let n = Integer::from(-30_i64);
         let exp = factor_smooth(&n, &basis).unwrap();
 
         assert_eq!(exp[0], 1); // negative
@@ -406,10 +413,10 @@ mod tests {
     #[test]
     fn test_not_smooth() {
         let basis = SmoothnessBasis::new(3); // primes: 2, 3, 5
-        let n = Integer::from(101u64); // 101 is prime > 5
+        let n = Integer::from(101_u64); // 101 is prime > 5
         assert!(factor_smooth(&n, &basis).is_none());
 
-        let n2 = Integer::from(77u64); // 7 · 11, both > 5
+        let n2 = Integer::from(77_u64); // 7 · 11, both > 5
         assert!(factor_smooth(&n2, &basis).is_none());
     }
 
@@ -441,7 +448,7 @@ mod tests {
     fn test_factor_smooth_large_composite() {
         let basis = SmoothnessBasis::new(10);
         // 2⁵ · 3³ · 5² = 32 · 27 · 25 = 21600
-        let n = Integer::from(21600u64);
+        let n = Integer::from(21600_u64);
         let exp = factor_smooth(&n, &basis).unwrap();
 
         assert_eq!(exp[0], 0);
@@ -463,7 +470,7 @@ mod tests {
     #[test]
     fn test_sr_pair_construction() {
         // Simple case: N = 91 = 7 · 13
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(5);
 
         // e = [2, 1] over primes [2, 3]
@@ -471,8 +478,8 @@ mod tests {
         // v = 1 (no negative exponents)
         // w = 12 - 91 = -79 (not smooth over small basis)
 
-        let e = vec![2i64, 1i64];
-        let primes = vec![2u64, 3u64];
+        let e = vec![2_i64, 1_i64];
+        let primes = vec![2_u64, 3_u64];
 
         let pair = try_build_sr_pair(&e, &primes, &n, &basis);
         assert!(pair.is_none()); // -79 is not smooth over {2,3,5,7,11}
@@ -480,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_sr_pair_with_negative_exponents() {
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(5);
 
         // e = [1, -1] over primes [2, 3]
@@ -488,8 +495,8 @@ mod tests {
         // v = 3¹ = 3
         // w = 2 - 3·91 = 2 - 273 = -271 (not smooth)
 
-        let e = vec![1i64, -1i64];
-        let primes = vec![2u64, 3u64];
+        let e = vec![1_i64, -1_i64];
+        let primes = vec![2_u64, 3_u64];
 
         let pair = try_build_sr_pair(&e, &primes, &n, &basis);
         assert!(pair.is_none()); // -271 is prime > 11
@@ -498,7 +505,7 @@ mod tests {
     #[test]
     fn test_sr_pair_w_zero() {
         // Case where w = 0 (should be rejected)
-        let n = Integer::from(6u64);
+        let n = Integer::from(6_u64);
         let basis = SmoothnessBasis::new(3);
 
         // e = [1, 1] over primes [2, 3]
@@ -506,8 +513,8 @@ mod tests {
         // v = 1
         // w = 6 - 6 = 0 (rejected)
 
-        let e = vec![1i64, 1i64];
-        let primes = vec![2u64, 3u64];
+        let e = vec![1_i64, 1_i64];
+        let primes = vec![2_u64, 3_u64];
 
         let pair = try_build_sr_pair(&e, &primes, &n, &basis);
         assert!(pair.is_none());
@@ -516,13 +523,13 @@ mod tests {
     #[test]
     fn test_sr_pair_exponent_vector_reconstruction() {
         // Test that exponent vectors correctly reconstruct u and w
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(10);
 
         // Create a smooth u and hope w is also smooth
         // u = 2² · 3 = 12
-        let e = vec![2i64, 1i64, 0i64, 0i64, 0i64];
-        let primes = vec![2u64, 3u64, 5u64, 7u64, 11u64];
+        let e = vec![2_i64, 1_i64, 0_i64, 0_i64, 0_i64];
+        let primes = vec![2_u64, 3_u64, 5_u64, 7_u64, 11_u64];
 
         let pair = try_build_sr_pair(&e, &primes, &n, &basis);
 
@@ -540,14 +547,14 @@ mod tests {
     #[test]
     fn test_verify_sr_pair() {
         // Test the verification function with a known valid relation
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(10);
 
         // u = 2³ · 3² = 72
         // v = 5
         // w = 72 - 5·91 = 72 - 455 = -383 (may or may not be smooth)
-        let e = vec![3i64, 2i64, -1i64, 0i64, 0i64];
-        let primes = vec![2u64, 3u64, 5u64, 7u64, 11u64];
+        let e = vec![3_i64, 2_i64, -1_i64, 0_i64, 0_i64];
+        let primes = vec![2_u64, 3_u64, 5_u64, 7_u64, 11_u64];
 
         if let Some(pair) = try_build_sr_pair(&e, &primes, &n, &basis) {
             assert!(verify_sr_pair(&pair, &e, &primes, &n));
@@ -557,7 +564,7 @@ mod tests {
     #[test]
     fn test_determinism() {
         let basis = SmoothnessBasis::new(5);
-        let n = Integer::from(60u64);
+        let n = Integer::from(60_u64);
 
         let exp1 = factor_smooth(&n, &basis).unwrap();
         let exp2 = factor_smooth(&n, &basis).unwrap();
@@ -569,7 +576,7 @@ mod tests {
     fn test_edge_case_single_prime() {
         let basis = SmoothnessBasis::new(1);
         // Only prime 2
-        let n = Integer::from(256u64); // 2⁸
+        let n = Integer::from(256_u64); // 2⁸
         let exp = factor_smooth(&n, &basis).unwrap();
 
         assert_eq!(exp[0], 0);
@@ -580,7 +587,7 @@ mod tests {
     fn test_edge_case_large_exponents() {
         let basis = SmoothnessBasis::new(3);
         // 2²⁰ = 1,048,576
-        let n = Integer::from(1_048_576u64);
+        let n = Integer::from(1_048_576_u64);
         let exp = factor_smooth(&n, &basis).unwrap();
 
         assert_eq!(exp[0], 0);
@@ -589,12 +596,12 @@ mod tests {
 
     #[test]
     fn test_all_zero_exponents() {
-        let n = Integer::from(91u64);
+        let n = Integer::from(91_u64);
         let basis = SmoothnessBasis::new(5);
 
         // e = [0, 0, 0]
-        let e = vec![0i64, 0i64, 0i64];
-        let primes = vec![2u64, 3u64, 5u64];
+        let e = vec![0_i64, 0_i64, 0_i64];
+        let primes = vec![2_u64, 3_u64, 5_u64];
 
         // u = 1, v = 1, w = 1 - 91 = -90 = -2 · 3² · 5 (smooth!)
         let pair = try_build_sr_pair(&e, &primes, &n, &basis);
@@ -613,9 +620,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "exponents length")]
     fn test_reconstruct_bounds_check() {
-        let primes = vec![2u64, 3u64, 5u64];
+        let primes = vec![2_u64, 3_u64, 5_u64];
         // Exponents too short: missing sign bit or prime exponents
-        let exponents = vec![0u32];
+        let exponents = vec![0_u32];
         let _ = reconstruct_from_exponents(&exponents, &primes);
     }
 }

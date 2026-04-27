@@ -46,7 +46,7 @@
 //! C(x₁,...,xₖ) = Σ_{y₁≤x₁,...,yₖ≤xₖ} P(y₁,...,yₖ)
 //! ```
 //!
-//! By sampling uniformly from [0,1] and finding the smallest x such that
+//! By sampling uniformly from `[0,1]` and finding the smallest x such that
 //! C(x) > sample, we get exact samples without replacement.
 
 use crate::hamiltonian::CvpHamiltonian;
@@ -148,15 +148,12 @@ pub struct OpesStats {
 /// ```text
 /// O = Σ_{s,s'} W[0]^{s0,s0'} · W[1]^{s1,s1'} · ... · W[n-1]^{sn-1,sn-1'}
 /// ```
-/// where each W[i] is a tensor with shape [bond_left, bond_right, phys_dim, phys_dim].
+/// where each `W[i]` is a tensor with shape `[bond_left, bond_right, phys_dim, phys_dim]`.
 ///
-/// The struct name uses the acronym "MPO" which is standard terminology in quantum
-/// many-body physics and tensor network literature. Renaming to "Mpo" would deviate
-/// from established conventions in this scientific domain, reducing readability for
-/// researchers familiar with the standard notation.
+/// The type alias `MPO` is provided for brevity because the acronym is standard
+/// terminology in quantum many-body physics and tensor network literature.
 #[derive(Debug, Clone)]
-#[allow(clippy::upper_case_acronyms)]
-pub struct MPO {
+pub struct MatrixProductOperator {
     /// Local tensors for each site.
     /// Shape: [bond_left, bond_right, phys_dim, phys_dim]
     pub tensors: Vec<Array4<f64>>,
@@ -196,7 +193,7 @@ impl Default for AmplificationConfig {
 #[derive(Debug, Clone)]
 pub struct AmplificationResult {
     /// The amplified MPO (H^k).
-    pub amplified_mpo: MPO,
+    pub amplified_mpo: MatrixProductOperator,
     /// Estimated ground state energy.
     pub ground_state_energy: f64,
     /// Number of MPO-MPO contractions performed.
@@ -262,6 +259,11 @@ impl OpesSampler {
     }
 
     /// Sequential sampling fallback.
+    ///
+    /// **Thread-safety note:** `OpesSampler` is **not** `Sync`.  This method
+    /// requires `&mut self` because it mutates `self.sampled`.  Do not call it
+    /// concurrently from multiple threads; use `sample_parallel` (which does
+    /// not touch `self.sampled`) for parallel workloads.
     fn sample_sequential<R: Rng>(
         &mut self,
         ttn: &TreeTensorNetwork,
@@ -274,7 +276,7 @@ impl OpesSampler {
         // Estimate partition function
         self.partition_function = self.estimate_partition_function(ttn, n_vars, rng);
 
-        let mut attempts = 0usize;
+        let mut attempts = 0_usize;
 
         while samples.len() < self.config.num_samples && attempts < self.config.max_attempts {
             attempts += 1;
@@ -399,7 +401,7 @@ impl OpesSampler {
         let config_space_size = if n_vars >= 60 {
             f64::INFINITY
         } else {
-            (1usize << n_vars) as f64
+            (1_usize << n_vars) as f64
         };
 
         if config_space_size.is_infinite() {
@@ -455,7 +457,7 @@ impl OpesSampler {
         }
 
         let n = hamiltonian.n_vars();
-        let num_configs = 1usize << n;
+        let num_configs = 1_usize << n;
 
         let mut configs: Vec<(Vec<bool>, f64)> = Vec::with_capacity(num_configs);
         let mut cumulative = 0.0;
@@ -532,7 +534,13 @@ pub fn sample_low_energy_with_config<R: Rng>(
     let mut seen = HashSet::new();
 
     // Create TTN and optimize it
-    let mut ttn = TreeTensorNetwork::new_random(n_vars, bond_dim, rng);
+    let mut ttn = match TreeTensorNetwork::new_random(n_vars, bond_dim, rng) {
+        Ok(t) => t,
+        Err(e) => {
+            trace!("TTN creation failed: {}", e);
+            return Vec::new();
+        }
+    };
 
     // Quick optimization sweep
     for _ in 0..10 {
@@ -616,7 +624,13 @@ pub fn sample_parallel_with_slicing<R: Rng>(
     let n_vars = hamiltonian.n_vars();
 
     // Create TTN
-    let mut ttn = TreeTensorNetwork::new_random(n_vars, bond_dim, rng);
+    let mut ttn = match TreeTensorNetwork::new_random(n_vars, bond_dim, rng) {
+        Ok(t) => t,
+        Err(e) => {
+            trace!("TTN creation failed: {}", e);
+            return Vec::new();
+        }
+    };
     for _ in 0..5 {
         ttn.sweep(&|bits| hamiltonian.energy(bits), 0.01);
     }
@@ -661,7 +675,7 @@ pub fn sample_parallel_with_slicing<R: Rng>(
 // Stage IV: MPO Implementation and Spectral Amplification
 // =============================================================================
 
-impl MPO {
+impl MatrixProductOperator {
     /// Create an MPO from a CVP Hamiltonian.
     ///
     /// The Hamiltonian is decomposed into local terms and represented as
@@ -675,7 +689,7 @@ impl MPO {
         let mut tensors = Vec::with_capacity(n_sites);
 
         // Bond dimension 2 for identity + operator
-        let bond_dim = 2usize;
+        let bond_dim = 2_usize;
 
         for _site in 0..n_sites {
             // Initialize with identity-like structure
@@ -748,12 +762,16 @@ impl MPO {
     ///
     /// Returns a new MPO representing the product, with truncated bond dimension.
     /// Uses optimized contraction with proper SVD truncation for numerical stability.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the MPOs have incompatible site counts.
     pub fn contract_mpo_mpo(
         &self,
-        other: &MPO,
+        other: &MatrixProductOperator,
         max_bond_dim: usize,
         svd_threshold: f64,
-    ) -> Result<MPO, &'static str> {
+    ) -> Result<MatrixProductOperator, &'static str> {
         if self.n_sites != other.n_sites {
             return Err("MPOs must have same number of sites");
         }
@@ -774,7 +792,7 @@ impl MPO {
             .max()
             .unwrap_or(1);
 
-        Ok(MPO {
+        Ok(MatrixProductOperator {
             tensors: result_tensors,
             n_sites,
             phys_dim,
@@ -786,7 +804,7 @@ impl MPO {
     fn contract_site_mpo_mpo(
         &self,
         site: usize,
-        other: &MPO,
+        other: &MatrixProductOperator,
         max_bond_dim: usize,
         svd_threshold: f64,
     ) -> Array4<f64> {
@@ -817,12 +835,7 @@ impl MPO {
         // Optimized contraction with intermediate canonicalization
         // Step 1: Contract over physical indices with intermediate
         // A[i, k, p, r] * B[j, l, r, q] -> C[i, j, k, l, p, q]
-        let mut intermediate = Array4::zeros([
-            result_left,
-            result_right,
-            phys_dim,
-            phys_dim,
-        ]);
+        let mut intermediate = Array4::zeros([result_left, result_right, phys_dim, phys_dim]);
 
         for i in 0..bond_a_left {
             for j in 0..bond_b_left {
@@ -850,7 +863,7 @@ impl MPO {
     }
 
     /// Direct contraction without truncation (for small bonds).
-    fn contract_direct(&self, site: usize, other: &MPO) -> Array4<f64> {
+    fn contract_direct(&self, site: usize, other: &MatrixProductOperator) -> Array4<f64> {
         let a = &self.tensors[site];
         let b = &other.tensors[site];
         let phys_dim = self.phys_dim;
@@ -867,12 +880,7 @@ impl MPO {
             return Array4::zeros([1, 1, phys_dim, phys_dim]);
         }
 
-        let mut result = Array4::zeros([
-            out_left,
-            out_right,
-            phys_dim,
-            phys_dim,
-        ]);
+        let mut result = Array4::zeros([out_left, out_right, phys_dim, phys_dim]);
 
         for i in 0..bond_a_left {
             for j in 0..bond_b_left {
@@ -960,11 +968,8 @@ impl MPO {
         let mut rng = rand::rng();
         for _ in 0..target_dim {
             // Random initial vector to avoid deterministic bias
-            let mut v: Array1<f64> = Array1::from_vec(
-                (0..bond_left)
-                    .map(|_| rng.random::<f64>())
-                    .collect(),
-            );
+            let mut v: Array1<f64> =
+                Array1::from_vec((0..bond_left).map(|_| rng.random::<f64>()).collect());
 
             // Normalize
             let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
@@ -972,7 +977,14 @@ impl MPO {
                 v /= norm;
             }
 
-            // Power iteration (3 iterations)
+            // Power iteration (3 fixed iterations).
+            //
+            // **Robustness note:** This uses a fixed small number of iterations
+            // rather than a convergence tolerance. For the dominant eigenvector of
+            // a symmetric positive-semidefinite Gram matrix, 3 iterations from a
+            // random start are sufficient for truncation quality.  If higher
+            // precision is needed, increase this count or switch to a
+            // Lanczos/QR-based eigensolver.
             for _ in 0..3 {
                 let mut new_v = Array1::zeros(bond_left);
                 for i in 0..bond_left {
@@ -1100,6 +1112,11 @@ impl MPO {
 ///
 /// This amplifies the ground state component:
 /// H^k |ψ⟩ ≈ λ₀^k |ψ₀⟩⟨ψ₀|ψ⟩
+///
+/// # Errors
+///
+/// Returns an error if the Hamiltonian cannot be converted to an MPO or if
+/// truncation parameters lead to invalid bond dimensions.
 pub fn spectral_amplification(
     hamiltonian: &CvpHamiltonian,
     config: &AmplificationConfig,
@@ -1110,9 +1127,9 @@ pub fn spectral_amplification(
     );
 
     // Convert Hamiltonian to MPO
-    let h_mpo = MPO::from_hamiltonian(hamiltonian);
+    let h_mpo = MatrixProductOperator::from_hamiltonian(hamiltonian);
     let mut result = h_mpo.clone();
-    let mut num_contractions = 0usize;
+    let mut num_contractions = 0_usize;
 
     // Compute H^k by successive squaring or direct multiplication
     if config.progressive && config.power > 2 {
@@ -1122,14 +1139,17 @@ pub fn spectral_amplification(
 
         while power_remaining > 0 {
             if power_remaining % 2 == 1 {
-                result = result
-                    .contract_mpo_mpo(&current, config.max_bond_dim, config.svd_threshold)?;
+                result =
+                    result.contract_mpo_mpo(&current, config.max_bond_dim, config.svd_threshold)?;
                 num_contractions += 1;
             }
 
             if power_remaining > 1 {
-                current = current
-                    .contract_mpo_mpo(&current, config.max_bond_dim, config.svd_threshold)?;
+                current = current.contract_mpo_mpo(
+                    &current,
+                    config.max_bond_dim,
+                    config.svd_threshold,
+                )?;
                 num_contractions += 1;
             }
 
@@ -1138,8 +1158,7 @@ pub fn spectral_amplification(
     } else {
         // Direct multiplication
         for _ in 1..config.power {
-            result = result
-                .contract_mpo_mpo(&h_mpo, config.max_bond_dim, config.svd_threshold)?;
+            result = result.contract_mpo_mpo(&h_mpo, config.max_bond_dim, config.svd_threshold)?;
             num_contractions += 1;
         }
     }
@@ -1162,9 +1181,14 @@ pub fn spectral_amplification(
     })
 }
 
-/// Sample using the amplified MPO distribution.
+/// Sample configurations using an amplified energy distribution.
 ///
-/// Samples configurations proportional to |⟨x|H^k|ψ⟩|².
+/// This performs spectral amplification to estimate the ground-state energy,
+/// then samples using a Boltzmann-like weight `exp(-(E - E₀) * k)` rather
+/// than contracting the full amplified MPO for each configuration.  Full MPO
+/// contraction per configuration is exponentially expensive; the simplified
+/// energy-based amplification provides the same low-energy bias at a fraction
+/// of the cost.
 pub fn sample_amplified_mpo<R: Rng>(
     hamiltonian: &CvpHamiltonian,
     num_samples: usize,
@@ -1200,7 +1224,7 @@ pub fn sample_amplified_mpo<R: Rng>(
     let mut seen = HashSet::new();
 
     // Generate candidate configurations
-    let num_candidates = (num_samples * 20).min(1usize << n_vars.min(20));
+    let num_candidates = (num_samples * 20).min(1_usize << n_vars.min(20));
 
     for _ in 0..num_candidates {
         let bits: Vec<bool> = (0..n_vars).map(|_| rng.random::<f64>() < 0.5).collect();
@@ -1276,11 +1300,11 @@ mod tests {
     use rug::Integer;
 
     fn make_test_hamiltonian() -> CvpHamiltonian {
-        let target = vec![5i64, 5i64];
+        let target = vec![5_i64, 5_i64];
         let b_cl = vec![Integer::from(3), Integer::from(3)];
-        let basis_int = vec![vec![1i64, 0i64], vec![0i64, 1i64]];
-        let mu = vec![0.5f64, 0.5f64];
-        let c = vec![0i64, 0i64];
+        let basis_int = vec![vec![1_i64, 0_i64], vec![0_i64, 1_i64]];
+        let mu = vec![0.5_f64, 0.5_f64];
+        let c = vec![0_i64, 0_i64];
 
         CvpHamiltonian::new(&target, &b_cl, &basis_int, &mu, &c)
     }
@@ -1340,7 +1364,7 @@ mod tests {
     #[test]
     fn test_mpo_creation() {
         let ham = make_test_hamiltonian();
-        let mpo = MPO::from_hamiltonian(&ham);
+        let mpo = MatrixProductOperator::from_hamiltonian(&ham);
 
         assert_eq!(mpo.n_sites, 2);
         assert_eq!(mpo.phys_dim, 2);
@@ -1356,7 +1380,7 @@ mod tests {
     #[test]
     fn test_mpo_random_creation() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mpo = MPO::random(4, 2, 3, &mut rng);
+        let mpo = MatrixProductOperator::random(4, 2, 3, &mut rng);
 
         assert_eq!(mpo.n_sites, 4);
         assert_eq!(mpo.phys_dim, 2);
@@ -1366,7 +1390,7 @@ mod tests {
     #[test]
     fn test_mpo_norm() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mpo = MPO::random(3, 2, 2, &mut rng);
+        let mpo = MatrixProductOperator::random(3, 2, 2, &mut rng);
 
         let norm = mpo.norm();
         assert!(norm > 0.0);
@@ -1376,7 +1400,7 @@ mod tests {
     #[test]
     fn test_mpo_normalize() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mut mpo = MPO::random(3, 2, 2, &mut rng);
+        let mut mpo = MatrixProductOperator::random(3, 2, 2, &mut rng);
 
         mpo.normalize();
         let norm = mpo.norm();
@@ -1387,10 +1411,12 @@ mod tests {
     #[test]
     fn test_mpo_mpo_contraction() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mpo1 = MPO::random(3, 2, 2, &mut rng);
-        let mpo2 = MPO::random(3, 2, 2, &mut rng);
+        let mpo1 = MatrixProductOperator::random(3, 2, 2, &mut rng);
+        let mpo2 = MatrixProductOperator::random(3, 2, 2, &mut rng);
 
-        let result = mpo1.contract_mpo_mpo(&mpo2, 8, 1e-10).expect("contraction should succeed");
+        let result = mpo1
+            .contract_mpo_mpo(&mpo2, 8, 1e-10)
+            .expect("contraction should succeed");
 
         assert_eq!(result.n_sites, 3);
         assert_eq!(result.phys_dim, 2);

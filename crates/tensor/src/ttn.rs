@@ -130,6 +130,35 @@ pub struct TreeTensorNetwork {
     pub bonds: Vec<BondInfo>,
 }
 
+/// Flat message buffer indexed by `from * num_nodes + to`.
+///
+/// Using a dense Vec instead of HashMap for better cache locality
+/// and to avoid hashing overhead on the hot path.
+#[derive(Debug)]
+struct MessageBuffer {
+    data: Vec<Option<Array1<f64>>>,
+    num_nodes: usize,
+}
+
+impl MessageBuffer {
+    fn new(num_nodes: usize) -> Self {
+        Self {
+            data: vec![None; num_nodes * num_nodes],
+            num_nodes,
+        }
+    }
+
+    fn get(&self, from: usize, to: usize) -> Option<&Array1<f64>> {
+        self.data.get(from * self.num_nodes + to)?.as_ref()
+    }
+
+    fn insert(&mut self, from: usize, to: usize, msg: Array1<f64>) {
+        if let Some(slot) = self.data.get_mut(from * self.num_nodes + to) {
+            *slot = Some(msg);
+        }
+    }
+}
+
 /// Configuration for TTN creation and operation.
 #[derive(Debug, Clone)]
 pub struct TTNConfig {
@@ -175,11 +204,21 @@ impl TreeTensorNetwork {
     /// * `config` - TTN configuration.
     /// * `rng` - Random number generator.
     ///
+    /// # Errors
+    ///
+    /// Returns an error if `n_qubits < 1`.
+    ///
     /// # Returns
     ///
     /// A new TTN with random normalized tensors.
-    pub fn new_with_config<R: Rng>(n_qubits: usize, config: &TTNConfig, rng: &mut R) -> Self {
-        assert!(n_qubits >= 1, "Must have at least 1 qubit");
+    pub fn new_with_config<R: Rng>(
+        n_qubits: usize,
+        config: &TTNConfig,
+        rng: &mut R,
+    ) -> Result<Self, &'static str> {
+        if n_qubits < 1 {
+            return Err("Must have at least 1 qubit");
+        }
 
         let bond_dim = config
             .initial_bond_dim
@@ -278,7 +317,7 @@ impl TreeTensorNetwork {
             None
         };
 
-        Self {
+        Ok(Self {
             nodes,
             n_qubits,
             root_idx,
@@ -287,11 +326,19 @@ impl TreeTensorNetwork {
             adaptive_manager,
             adaptive_enabled: config.enable_adaptive,
             bonds,
-        }
+        })
     }
 
     /// Create a random TTN with default configuration.
-    pub fn new_random<R: Rng>(n_qubits: usize, bond_dim: usize, rng: &mut R) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `n_qubits < 1`.
+    pub fn new_random<R: Rng>(
+        n_qubits: usize,
+        bond_dim: usize,
+        rng: &mut R,
+    ) -> Result<Self, &'static str> {
         let config = TTNConfig {
             initial_bond_dim: bond_dim,
             max_bond_dim: bond_dim.max(MAX_BOND_DIM),
@@ -377,15 +424,11 @@ impl TreeTensorNetwork {
                 let right_ready = node.right_child.is_none_or(|c| processed[c]);
 
                 if left_ready && right_ready && !processed[parent_idx] {
-                    let Some(left_contr) = node
-                        .left_child
-                        .and_then(|c| contractions[c].clone())
+                    let Some(left_contr) = node.left_child.and_then(|c| contractions[c].clone())
                     else {
                         return f64::NAN;
                     };
-                    let Some(right_contr) = node
-                        .right_child
-                        .and_then(|c| contractions[c].clone())
+                    let Some(right_contr) = node.right_child.and_then(|c| contractions[c].clone())
                     else {
                         return f64::NAN;
                     };
@@ -408,6 +451,11 @@ impl TreeTensorNetwork {
     ///
     /// This version minimizes memory allocations for repeated evaluations
     /// with different configurations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bit configuration length does not match the
+    /// qubit count or if the provided buffers are incorrectly sized.
     pub fn amplitude_fast(
         &self,
         bits: &[bool],
@@ -519,8 +567,16 @@ impl TreeTensorNetwork {
         p_start: usize,
         p_end: usize,
     ) -> Array2<f64> {
-        debug_assert_eq!(left.shape(), [bd, 1], "left contraction buffer must be [bd, 1]");
-        debug_assert_eq!(right.shape(), [bd, 1], "right contraction buffer must be [bd, 1]");
+        debug_assert_eq!(
+            left.shape(),
+            [bd, 1],
+            "left contraction buffer must be [bd, 1]"
+        );
+        debug_assert_eq!(
+            right.shape(),
+            [bd, 1],
+            "right contraction buffer must be [bd, 1]"
+        );
 
         let mut result = Array2::zeros([p_end - p_start, 1]);
         for (p_idx, p) in (p_start..p_end).enumerate() {
@@ -595,7 +651,8 @@ impl TreeTensorNetwork {
             slices
                 .into_par_iter()
                 .map(|(start, end)| {
-                    let local_result = Self::contract_node_core(tensor, bd, left, right, start, end);
+                    let local_result =
+                        Self::contract_node_core(tensor, bd, left, right, start, end);
                     (start, local_result)
                 })
                 .collect()
@@ -603,7 +660,8 @@ impl TreeTensorNetwork {
             slices
                 .into_iter()
                 .map(|(start, end)| {
-                    let local_result = Self::contract_node_core(tensor, bd, left, right, start, end);
+                    let local_result =
+                        Self::contract_node_core(tensor, bd, left, right, start, end);
                     (start, local_result)
                 })
                 .collect()
@@ -793,9 +851,10 @@ impl TreeTensorNetwork {
 
         // Compute gradient by finite differences
         let mut grad = Array3::zeros(node.tensor.raw_dim());
+        let shape = node.tensor.shape();
 
-        for b in 0..2 {
-            for d in 0..node.bond_dim {
+        for b in 0..shape[0] {
+            for d in 0..shape[1] {
                 let epsilon = 1e-6;
 
                 let mut bits_plus = vec![false; self.n_qubits];
@@ -836,7 +895,6 @@ impl TreeTensorNetwork {
     }
 
     /// Reuse core index-slicing utilities to avoid duplication.
-
     /// Enable adaptive bond dimensions.
     pub fn enable_adaptive_bonds(&mut self, params: PidParams) {
         self.adaptive_manager = Some(AdaptiveBondManager::new(
@@ -864,39 +922,6 @@ impl TreeTensorNetwork {
             min_dimension: min_dim,
             max_dimension: max_dim,
             adaptive_enabled: self.adaptive_enabled,
-        }
-    }
-
-    /// Flat message buffer indexed by `from * num_nodes + to`.
-    ///
-    /// Using a dense Vec instead of HashMap for better cache locality
-    /// and to avoid hashing overhead on the hot path.
-    #[derive(Debug)]
-    struct MessageBuffer {
-        data: Vec<Option<Array1<f64>>>,
-        num_nodes: usize,
-    }
-
-    impl MessageBuffer {
-        fn new(num_nodes: usize) -> Self {
-            Self {
-                data: vec![None; num_nodes * num_nodes],
-                num_nodes,
-            }
-        }
-
-        fn get(&self, from: usize, to: usize) -> Option<&Array1<f64>> {
-            self.data.get(from * self.num_nodes + to)?.as_ref()
-        }
-
-        fn get_mut(&mut self, from: usize, to: usize) -> Option<&mut Array1<f64>> {
-            self.data.get_mut(from * self.num_nodes + to)?.as_mut()
-        }
-
-        fn insert(&mut self, from: usize, to: usize, msg: Array1<f64>) {
-            if let Some(slot) = self.data.get_mut(from * self.num_nodes + to) {
-                *slot = Some(msg);
-            }
         }
     }
 
@@ -970,11 +995,7 @@ impl TreeTensorNetwork {
     }
 
     /// BP upward pass: propagate messages from leaves to root.
-    fn bp_upward_pass(
-        &self,
-        messages: &mut MessageBuffer,
-        max_change: &mut f64,
-    ) {
+    fn bp_upward_pass(&self, messages: &mut MessageBuffer, max_change: &mut f64) {
         // Process nodes in topological order (leaves first)
         let mut processed = vec![false; self.nodes.len()];
         let mut queue: VecDeque<usize> = self.physical_to_leaf.iter().copied().collect();
@@ -994,7 +1015,7 @@ impl TreeTensorNetwork {
                         .iter()
                         .zip(old_msg.iter())
                         .map(|(a, b)| (a - b).abs())
-                        .fold(0.0f64, |a: f64, b: f64| a.max(b));
+                        .fold(0.0_f64, |a: f64, b: f64| a.max(b));
                     *max_change = (*max_change).max(change);
 
                     let damped = old_msg * BP_DAMPING + &msg * (1.0 - BP_DAMPING);
@@ -1017,11 +1038,7 @@ impl TreeTensorNetwork {
     }
 
     /// BP downward pass: propagate messages from root to leaves.
-    fn bp_downward_pass(
-        &self,
-        messages: &mut MessageBuffer,
-        max_change: &mut f64,
-    ) {
+    fn bp_downward_pass(&self, messages: &mut MessageBuffer, max_change: &mut f64) {
         // Process nodes in reverse topological order (root first)
         let mut queue: VecDeque<usize> = VecDeque::new();
         queue.push_back(self.root_idx);
@@ -1041,7 +1058,7 @@ impl TreeTensorNetwork {
                         .iter()
                         .zip(old_msg.iter())
                         .map(|(a, b)| (a - b).abs())
-                        .fold(0.0f64, |a: f64, b: f64| a.max(b));
+                        .fold(0.0_f64, |a: f64, b: f64| a.max(b));
                     *max_change = (*max_change).max(change);
 
                     let damped = old_msg * BP_DAMPING + &msg * (1.0 - BP_DAMPING);
@@ -1064,7 +1081,7 @@ impl TreeTensorNetwork {
                         .iter()
                         .zip(old_msg.iter())
                         .map(|(a, b)| (a - b).abs())
-                        .fold(0.0f64, |a: f64, b: f64| a.max(b));
+                        .fold(0.0_f64, |a: f64, b: f64| a.max(b));
                     *max_change = (*max_change).max(change);
 
                     let damped = old_msg * BP_DAMPING + &msg * (1.0 - BP_DAMPING);
@@ -1082,12 +1099,7 @@ impl TreeTensorNetwork {
     }
 
     /// Compute message from source to target node.
-    fn compute_message(
-        &self,
-        from: usize,
-        to: usize,
-        messages: &MessageBuffer,
-    ) -> Array1<f64> {
+    fn compute_message(&self, from: usize, to: usize, messages: &MessageBuffer) -> Array1<f64> {
         let from_node = &self.nodes[from];
         let bond_dim = from_node.bond_dim;
 
@@ -1139,10 +1151,7 @@ impl TreeTensorNetwork {
     }
 
     /// Apply gauge transformations based on BP marginals.
-    fn apply_gauge_transformations(
-        &mut self,
-        messages: &MessageBuffer,
-    ) -> Vec<f64> {
+    fn apply_gauge_transformations(&mut self, messages: &MessageBuffer) -> Vec<f64> {
         let mut entropies = Vec::with_capacity(self.bonds.len());
         let mut bond_updates = Vec::with_capacity(self.bonds.len());
 
@@ -1188,6 +1197,10 @@ impl TreeTensorNetwork {
     /// Instead of a homogeneous binary tree, this creates a tree where strongly
     /// coupled sites are grouped together early in the hierarchy. This prevents
     /// unbalanced trees and improves numerical precision in frustrated systems.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `n_qubits < 1` or the coupling list is invalid.
     ///
     /// # Complexity Warning
     ///
@@ -1276,9 +1289,7 @@ impl TreeTensorNetwork {
         }
 
         // Build TTN from cluster hierarchy
-        Ok(Self::build_from_cluster_tree(
-            n_qubits, &clusters, &cluster_parents, bond_dim, config, rng,
-        ))
+        Self::build_from_cluster_tree(n_qubits, &clusters, &cluster_parents, bond_dim, config, rng)
     }
 
     /// Build TTN from hierarchical cluster tree.
@@ -1296,7 +1307,7 @@ impl TreeTensorNetwork {
         bond_dim: usize,
         config: &TTNConfig,
         rng: &mut R,
-    ) -> Self {
+    ) -> Result<Self, &'static str> {
         if clusters.len() <= 1 {
             // Fall back to balanced tree
             return Self::new_with_config(n_qubits, config, rng);
@@ -1424,7 +1435,7 @@ impl TreeTensorNetwork {
             root_idx
         );
 
-        Self {
+        Ok(Self {
             nodes,
             n_qubits,
             root_idx,
@@ -1433,7 +1444,7 @@ impl TreeTensorNetwork {
             adaptive_manager,
             adaptive_enabled: config.enable_adaptive,
             bonds,
-        }
+        })
     }
 
     /// Compute coupling strengths from Hamiltonian.
@@ -1451,7 +1462,9 @@ impl TreeTensorNetwork {
 
         let mut get_energy = |bits: &[bool]| {
             let bits = bits.to_vec();
-            *cache.entry(bits.clone()).or_insert_with(|| hamiltonian(&bits))
+            *cache
+                .entry(bits.clone())
+                .or_insert_with(|| hamiltonian(&bits))
         };
 
         // Estimate couplings by finite differences
@@ -1565,7 +1578,7 @@ pub struct BPGaugeResult {
 #[derive(Debug)]
 pub struct ContractionBuffers {
     /// Tensor values for each node during contraction.
-    /// Shape: [node_idx][bond_value]
+    /// Shape: `[node_idx][bond_value]`
     pub node_tensors: Vec<Vec<f64>>,
     /// Whether each node's tensor has been computed.
     pub node_ready: Vec<bool>,
@@ -1605,7 +1618,7 @@ mod tests {
     #[test]
     fn test_ttn_creation() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(4, 2, &mut rng);
+        let ttn = TreeTensorNetwork::new_random(4, 2, &mut rng).unwrap();
 
         assert_eq!(ttn.n_qubits, 4);
         assert_eq!(ttn.nodes.len(), 7); // 2*4 - 1 = 7
@@ -1615,7 +1628,7 @@ mod tests {
     #[test]
     fn test_amplitude_basic() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(2, 2, &mut rng);
+        let ttn = TreeTensorNetwork::new_random(2, 2, &mut rng).unwrap();
 
         let amp_00 = ttn.amplitude(&[false, false]);
         let amp_01 = ttn.amplitude(&[false, true]);
@@ -1631,7 +1644,7 @@ mod tests {
     #[test]
     fn test_single_qubit() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(1, 2, &mut rng);
+        let ttn = TreeTensorNetwork::new_random(1, 2, &mut rng).unwrap();
 
         assert_eq!(ttn.n_qubits, 1);
         assert_eq!(ttn.nodes.len(), 1);
@@ -1652,7 +1665,7 @@ mod tests {
             ..Default::default()
         };
 
-        let ttn = TreeTensorNetwork::new_with_config(4, &config, &mut rng);
+        let ttn = TreeTensorNetwork::new_with_config(4, &config, &mut rng).unwrap();
 
         assert!(ttn.adaptive_enabled);
         assert!(ttn.has_adaptive_manager());
@@ -1664,7 +1677,7 @@ mod tests {
     #[test]
     fn test_parallel_probabilities() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng);
+        let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng).unwrap();
 
         let slice_config = SliceConfig::for_tnss(3);
         let probs = ttn.probabilities_parallel(&slice_config);
@@ -1681,7 +1694,7 @@ mod tests {
     #[test]
     fn test_contract_node_parallel() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng);
+        let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng).unwrap();
 
         // Find an internal node
         let internal_node = ttn
@@ -1725,7 +1738,7 @@ mod tests {
     #[test]
     fn test_bp_gauging() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mut ttn = TreeTensorNetwork::new_random(4, 2, &mut rng);
+        let mut ttn = TreeTensorNetwork::new_random(4, 2, &mut rng).unwrap();
 
         let result = ttn.bp_gauging();
 

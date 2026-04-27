@@ -7,20 +7,11 @@
 
 use rand::Rng;
 use std::collections::{BinaryHeap, HashSet};
+use tnss_core::consts::{ENERGY_SCALE, EPSILON, MAX_EXPONENT, MIN_TEMPERATURE};
 use tnss_tensor::hamiltonian::CvpHamiltonian;
 
-/// Epsilon threshold for numerical comparisons.
-const EPSILON: f64 = 1e-12;
-
-/// Scale factor for converting energies to comparable integers.
-/// Chosen to preserve precision while avoiding overflow for typical energy ranges.
-const ENERGY_SCALE: f64 = 1e9;
-
-/// Maximum exponent value for acceptance probability to prevent overflow.
-const MAX_EXPONENT: f64 = 700.0;
-
-/// Minimum temperature threshold for early termination.
-const MIN_TEMP: f64 = 1e-10;
+/// Maximum consecutive rejections before early termination in simulated annealing.
+const MAX_CONSECUTIVE_REJECTS: usize = 100;
 
 /// A configuration together with its energy.
 #[derive(Clone, Debug)]
@@ -33,8 +24,12 @@ pub struct Config {
 
 impl Config {
     /// Create a new configuration.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `energy` is not finite (NaN or infinite).
     pub fn new(bits: Vec<bool>, energy: f64) -> Self {
-        debug_assert!(
+        assert!(
             energy.is_finite(),
             "Config energy must be finite, got {}",
             energy
@@ -176,15 +171,16 @@ impl<R: Rng> SimulatedAnnealingSampler<R> {
 
 impl<R: Rng> Sampler for SimulatedAnnealingSampler<R> {
     fn sample(&mut self, h: &CvpHamiltonian, gamma: usize) -> Vec<Config> {
-        debug_assert!(gamma > 0, "gamma must be positive");
-        debug_assert!(self.t0 > 0.0, "initial temperature must be positive");
-        debug_assert!(
-            self.cooling > 0.0 && self.cooling < 1.0,
-            "cooling rate must be in (0, 1)"
-        );
+        if gamma == 0
+            || self.t0 <= 0.0
+            || self.cooling <= 0.0
+            || self.cooling >= 1.0
+            || h.n_vars() == 0
+        {
+            return Vec::new();
+        }
 
         let n = h.n_vars();
-        debug_assert!(n > 0, "Hamiltonian must have at least one variable");
 
         // Track seen configurations to ensure distinctness
         let mut seen: HashSet<Vec<bool>> = HashSet::with_capacity(gamma * 2);
@@ -221,11 +217,10 @@ impl<R: Rng> Sampler for SimulatedAnnealingSampler<R> {
             // Simulated annealing main loop
             let mut temp: f64 = self.t0;
             let mut consecutive_rejects: usize = 0;
-            const MAX_CONSECUTIVE_REJECTS: usize = 100;
 
             for _ in 0..self.sweeps {
                 // Early termination if temperature too low
-                if temp < MIN_TEMP {
+                if temp < MIN_TEMPERATURE {
                     break;
                 }
 
@@ -382,10 +377,11 @@ impl PartialOrd for BeamNode {
 
 impl Sampler for BeamSearchSampler {
     fn sample(&mut self, h: &CvpHamiltonian, gamma: usize) -> Vec<Config> {
-        debug_assert!(gamma > 0, "gamma must be positive");
+        if gamma == 0 || h.n_vars() == 0 {
+            return Vec::new();
+        }
 
         let n = h.n_vars();
-        debug_assert!(n > 0, "Hamiltonian must have at least one variable");
 
         // Track visited configurations
         let mut seen: HashSet<Vec<bool>> = HashSet::new();
@@ -463,11 +459,11 @@ mod tests {
 
     /// Helper: Create a simple 2D Hamiltonian for testing.
     fn make_test_hamiltonian() -> CvpHamiltonian {
-        let target = vec![5i64, 5i64];
+        let target = vec![5_i64, 5_i64];
         let b_cl = vec![Integer::from(3), Integer::from(3)];
-        let basis_int = vec![vec![1i64, 0i64], vec![0i64, 1i64]];
-        let mu = vec![0.5f64, 0.5f64];
-        let c = vec![0i64, 0i64];
+        let basis_int = vec![vec![1_i64, 0_i64], vec![0_i64, 1_i64]];
+        let mu = vec![0.5_f64, 0.5_f64];
+        let c = vec![0_i64, 0_i64];
 
         CvpHamiltonian::new(&target, &b_cl, &basis_int, &mu, &c)
     }
@@ -475,7 +471,7 @@ mod tests {
     #[test]
     fn test_simulated_annealing_determinism() {
         let h = make_test_hamiltonian();
-        let seed = 42u64;
+        let seed = 42_u64;
 
         let mut rng1 = ChaCha8Rng::seed_from_u64(seed);
         let mut sampler1 = SimulatedAnnealingSampler::new(&mut rng1);
@@ -587,11 +583,11 @@ mod tests {
     #[test]
     fn test_edge_case_n1() {
         // Test with n=1 (single variable)
-        let target = vec![5i64];
+        let target = vec![5_i64];
         let b_cl = vec![Integer::from(3)];
-        let basis_int = vec![vec![1i64]];
-        let mu = vec![0.5f64];
-        let c = vec![0i64];
+        let basis_int = vec![vec![1_i64]];
+        let mu = vec![0.5_f64];
+        let c = vec![0_i64];
 
         let h = CvpHamiltonian::new(&target, &b_cl, &basis_int, &mu, &c);
 
