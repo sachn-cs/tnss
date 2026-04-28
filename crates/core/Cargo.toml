@@ -25,4 +25,9 @@ rayon = { workspace = true, optional = true }
 default = ["parallel"]
 parallel = ["rayon", "ndarray/rayon"]
 
+[[bench]]
+name = "primes"
+harness = false
+
 [dev-dependencies]
+criterion = { workspace = true }

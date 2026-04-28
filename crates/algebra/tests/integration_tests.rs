@@ -1,7 +1,7 @@
 //! Integration tests for TNSS factorization pipeline.
 
 use rug::Integer;
-use tnss_algebra::factor::{self, Config, FactorResult};
+use tnss_algebra::factor::{self, Config};
 use tnss_algebra::gf2_solver;
 use tnss_algebra::primes;
 use tnss_algebra::smoothness;
@@ -13,14 +13,14 @@ fn test_factor_small_semiprime() {
     let n = Integer::from(91_u64);
     let config = Config::default_for_bits(7);
 
-    match factor::factorize(&n, &config) {
-        Ok(FactorResult { p, q, .. }) => {
-            assert!((p == 7 && q == 13) || (p == 13 && q == 7));
-        }
-        Err(e) => {
-            eprintln!("Factorization result: {:?}", e);
-        }
-    }
+    let result = factor::factorize(&n, &config).expect("factorization of 91 should succeed");
+    assert!(
+        (result.p == 7 && result.q == 13) || (result.p == 13 && result.q == 7),
+        "expected 7*13, got {}*{}",
+        result.p,
+        result.q
+    );
+    assert_eq!(result.p * result.q, n, "factor verification failed");
 }
 
 /// Test factoring another small semiprime (3 * 17 = 51)
@@ -28,7 +28,51 @@ fn test_factor_small_semiprime() {
 fn test_factor_51() {
     let n = Integer::from(51_u64);
     let config = Config::default_for_bits(6);
-    let _ = factor::factorize(&n, &config);
+    let result = factor::factorize(&n, &config).expect("factorization of 51 should succeed");
+    assert!(
+        (result.p == 3 && result.q == 17) || (result.p == 17 && result.q == 3),
+        "expected 3*17, got {}*{}",
+        result.p,
+        result.q
+    );
+    assert_eq!(result.p * result.q, n, "factor verification failed");
+}
+
+/// Test factoring a range of small semiprimes.
+#[test]
+fn test_factor_range() {
+    let tests = [
+        (91u64, 7u64, 13u64),
+        (51u64, 3u64, 17u64),
+        (143u64, 11u64, 13u64),
+        (221u64, 13u64, 17u64),
+        (323u64, 17u64, 19u64),
+        (437u64, 19u64, 23u64),
+        (667u64, 23u64, 29u64),
+        (899u64, 29u64, 31u64),
+    ];
+
+    for (n, p_exp, q_exp) in tests {
+        let n_big = Integer::from(n);
+        let mut config = Config::default_for_bits(n_big.significant_bits() as usize);
+        config.max_cvp = 2000;
+        let result = factor::factorize(&n_big, &config)
+            .unwrap_or_else(|e| panic!("factorization of {} failed: {:?}", n, e));
+        assert!(
+            (result.p == p_exp && result.q == q_exp) || (result.p == q_exp && result.q == p_exp),
+            "expected {}*{}, got {}*{}",
+            p_exp,
+            q_exp,
+            result.p,
+            result.q
+        );
+        assert_eq!(
+            result.p * result.q,
+            n_big,
+            "factor verification failed for {}",
+            n
+        );
+    }
 }
 
 /// Test prime generation

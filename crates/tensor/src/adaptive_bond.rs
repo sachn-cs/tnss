@@ -195,9 +195,11 @@ impl AdaptiveBondManager {
     /// # Returns
     ///
     /// Vector of new bond dimensions for each bond.
-    pub fn update(&mut self, entropies: &[f64]) -> Result<Vec<usize>, &'static str> {
+    pub fn update(&mut self, entropies: &[f64]) -> crate::Result<Vec<usize>> {
         if entropies.len() != self.states.len() {
-            return Err("Entropy slice length must match number of bonds");
+            return Err(crate::Error::InvalidParameter(
+                "Entropy slice length must match number of bonds".to_string(),
+            ));
         }
 
         let mut new_bonds = Vec::with_capacity(self.states.len());

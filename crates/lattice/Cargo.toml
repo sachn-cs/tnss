@@ -29,3 +29,10 @@ log = { workspace = true }
 rayon = { workspace = true, optional = true }
 lll-rs = { workspace = true }
 
+[[bench]]
+name = "lattice_reduction"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }
+

@@ -215,9 +215,11 @@ impl TreeTensorNetwork {
         n_qubits: usize,
         config: &TTNConfig,
         rng: &mut R,
-    ) -> Result<Self, &'static str> {
+    ) -> crate::Result<Self> {
         if n_qubits < 1 {
-            return Err("Must have at least 1 qubit");
+            return Err(crate::Error::InvalidParameter(
+                "Must have at least 1 qubit".to_string(),
+            ));
         }
 
         let bond_dim = config
@@ -338,7 +340,7 @@ impl TreeTensorNetwork {
         n_qubits: usize,
         bond_dim: usize,
         rng: &mut R,
-    ) -> Result<Self, &'static str> {
+    ) -> crate::Result<Self> {
         let config = TTNConfig {
             initial_bond_dim: bond_dim,
             max_bond_dim: bond_dim.max(MAX_BOND_DIM),
@@ -460,24 +462,32 @@ impl TreeTensorNetwork {
         &self,
         bits: &[bool],
         buffers: &mut ContractionBuffers,
-    ) -> Result<f64, &'static str> {
+    ) -> crate::Result<f64> {
         if bits.len() != self.n_qubits {
-            return Err("bit configuration length does not match qubit count");
+            return Err(crate::Error::InvalidParameter(
+                "bit configuration length does not match qubit count".to_string(),
+            ));
         }
         if buffers.node_tensors.len() != self.nodes.len() {
-            return Err("buffer node_tensors length does not match node count");
+            return Err(crate::Error::InvalidState(
+                "buffer node_tensors length does not match node count".to_string(),
+            ));
         }
         // Validate each inner buffer can hold at least max_bond_dim elements
         let max_bond = self.bond_dim;
         for (i, buf) in buffers.node_tensors.iter().enumerate() {
             if buf.len() < max_bond {
-                return Err("buffer node_tensors inner vec too small for node bond dimension");
+                return Err(crate::Error::InvalidState(
+                    "buffer node_tensors inner vec too small for node bond dimension".to_string(),
+                ));
             }
             // Also validate tensor shapes for leaf nodes
             if self.nodes[i].is_leaf {
                 let shape = self.nodes[i].tensor.shape();
                 if shape.len() != 3 || shape[0] != 2 || shape[2] != 1 {
-                    return Err("leaf tensor shape invalid");
+                    return Err(crate::Error::InvalidState(
+                        "leaf tensor shape invalid".to_string(),
+                    ));
                 }
             }
         }
@@ -547,7 +557,9 @@ impl TreeTensorNetwork {
         buffers.node_ready.fill(false);
 
         if self.root_idx >= buffers.node_tensors.len() {
-            return Err("root index out of buffer bounds");
+            return Err(crate::Error::InvalidState(
+                "root index out of buffer bounds".to_string(),
+            ));
         }
         Ok(buffers.node_tensors[self.root_idx][0])
     }
@@ -1219,9 +1231,11 @@ impl TreeTensorNetwork {
         couplings: &[Coupling],
         config: &TTNConfig,
         rng: &mut R,
-    ) -> Result<Self, &'static str> {
+    ) -> crate::Result<Self> {
         if n_qubits < 1 {
-            return Err("Must have at least 1 qubit");
+            return Err(crate::Error::InvalidParameter(
+                "Must have at least 1 qubit".to_string(),
+            ));
         }
 
         let bond_dim = config
@@ -1244,52 +1258,65 @@ impl TreeTensorNetwork {
             }
         }
 
-        // Build hierarchical clustering tree
-        let mut clusters: Vec<Vec<usize>> = (0..n_qubits).map(|i| vec![i]).collect();
-        let mut cluster_parents: Vec<Option<usize>> = vec![None; n_qubits];
+        // Build hierarchical clustering tree with stable cluster IDs.
+        //
+        // all_clusters: every cluster ever created, indexed by stable ID.
+        // parents[cluster_id] = parent cluster ID (None for the root).
+        // active: IDs of clusters that have not yet been merged.
+        let mut all_clusters: Vec<Vec<usize>> = (0..n_qubits).map(|i| vec![i]).collect();
+        let mut parents: Vec<Option<usize>> = vec![None; n_qubits];
+        let mut active: Vec<usize> = (0..n_qubits).collect();
 
-        while clusters.len() > 1 {
-            // Find strongest coupling between clusters
+        while active.len() > 1 {
+            // Find strongest coupling between active clusters
             let mut best_coupling = 0.0;
-            let mut best_pair = (0, 1);
+            let mut best_pair = (0, 1); // indices into active[]
 
-            for i in 0..clusters.len() {
-                for j in (i + 1)..clusters.len() {
+            for ai in 0..active.len() {
+                for aj in (ai + 1)..active.len() {
+                    let id_i = active[ai];
+                    let id_j = active[aj];
                     let mut strength: f64 = 0.0;
-                    for &a in &clusters[i] {
-                        for &b in &clusters[j] {
+                    for &a in &all_clusters[id_i] {
+                        for &b in &all_clusters[id_j] {
                             strength += coupling_matrix[a][b];
                         }
                     }
 
                     if strength > best_coupling {
                         best_coupling = strength;
-                        best_pair = (i, j);
+                        best_pair = (ai, aj);
                     }
                 }
             }
 
             // Merge the two clusters
-            let merged: Vec<usize> = clusters[best_pair.0]
+            let id_i = active[best_pair.0];
+            let id_j = active[best_pair.1];
+            let merged: Vec<usize> = all_clusters[id_i]
                 .iter()
-                .chain(&clusters[best_pair.1])
+                .chain(&all_clusters[id_j])
                 .copied()
                 .collect();
 
-            // Record parent relationships
-            let new_idx = clusters.len();
-            cluster_parents.push(Some(new_idx));
+            let new_id = all_clusters.len();
+            all_clusters.push(merged);
+            parents.push(None);
 
-            // Remove old clusters and add merged one using swap_remove for O(1)
-            let (i, j) = best_pair;
-            let (min_idx, max_idx) = if i < j { (i, j) } else { (j, i) };
-            clusters.swap_remove(max_idx);
-            clusters.swap_remove(min_idx);
-            clusters.push(merged);
+            // Record parent relationships
+            parents[id_i] = Some(new_id);
+            parents[id_j] = Some(new_id);
+
+            // Remove merged clusters from active set and add the new one
+            let (ai, aj) = best_pair;
+            let (min_a, max_a) = if ai < aj { (ai, aj) } else { (aj, ai) };
+            active.swap_remove(max_a);
+            active.swap_remove(min_a);
+            active.push(new_id);
         }
 
-        // Build TTN from cluster hierarchy
-        Self::build_from_cluster_tree(n_qubits, &clusters, &cluster_parents, bond_dim, config, rng)
+        // Build TTN from the complete cluster hierarchy
+        Self::build_from_cluster_tree(n_qubits, &all_clusters, &parents, bond_dim, config, rng)
     }
 
     /// Build TTN from hierarchical cluster tree.
@@ -1307,15 +1334,16 @@ impl TreeTensorNetwork {
         bond_dim: usize,
         config: &TTNConfig,
         rng: &mut R,
-    ) -> Result<Self, &'static str> {
-        if clusters.len() <= 1 {
-            // Fall back to balanced tree
+    ) -> crate::Result<Self> {
+        if clusters.len() <= 1 || n_qubits < 2 {
+            // Fall back to balanced tree for trivial cases
             return Self::new_with_config(n_qubits, config, rng);
         }
 
         trace!(
-            "Building TTN from {} cluster hierarchy steps",
-            clusters.len()
+            "Building TTN from {} clusters ({} hierarchy steps)",
+            clusters.len(),
+            clusters.len() - n_qubits
         );
 
         let mut nodes: Vec<TTNNode> = Vec::with_capacity(2 * n_qubits - 1);
@@ -1359,15 +1387,23 @@ impl TreeTensorNetwork {
                 }
             }
 
-            if children.len() >= 2 {
-                // Create internal node merging the first two children
+            if children.len() == 2 {
+                // Create internal node merging the two children (binary tree invariant)
                 let left_cluster = children[0];
                 let right_cluster = children[1];
 
                 let Some(&left_node) = cluster_to_node.get(&left_cluster) else {
+                    trace!(
+                        "Skipping merge {}: left child {} not found",
+                        cluster_idx, left_cluster
+                    );
                     continue;
                 };
                 let Some(&right_node) = cluster_to_node.get(&right_cluster) else {
+                    trace!(
+                        "Skipping merge {}: right child {} not found",
+                        cluster_idx, right_cluster
+                    );
                     continue;
                 };
 

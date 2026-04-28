@@ -26,6 +26,10 @@ rand_chacha = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true, optional = true }
 
+[[bench]]
+name = "sampler"
+harness = false
+
 [dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }

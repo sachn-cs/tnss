@@ -47,12 +47,16 @@ use std::time::Instant;
 use tnss_core::index_slicing::SliceConfig;
 use tnss_core::{Error, Result};
 use tnss_lattice::{
-    babai::{babai_rounding, compute_gram_schmidt, reduce_basis_lll},
+    babai::{
+        KleinConfig, babai_rounding, compute_gram_schmidt, hybrid_cvp_solver, klein_sampling,
+        reduce_basis_lll,
+    },
     bkz::{BKZConfig, bkz_reduce, progressive_bkz_reduce},
     lattice::SchnorrLattice,
 };
 use tnss_tensor::{
     adaptive_bond::PidParams,
+    classical_sampler::{ClassicalSamplerConfig, sample_low_energy},
     hamiltonian::CvpHamiltonian,
     ttn::{TTNConfig, TreeTensorNetwork},
 };
@@ -128,6 +132,16 @@ pub struct Config {
     /// SVD threshold for tensor compression.
     pub svd_threshold: f64,
 
+    // -- CVP solver parameters --
+    /// Use Klein sampling instead of deterministic Babai rounding.
+    pub use_klein_sampling: bool,
+    /// Use hybrid CVP solver (deterministic + Klein sampling, keeps best).
+    pub use_hybrid_cvp: bool,
+    /// Number of Klein samples to generate (higher = better quality, slower).
+    pub klein_num_samples: usize,
+    /// Klein sampling width parameter eta.
+    pub klein_eta: f64,
+
     // -- BKZ parameters --
     /// Use BKZ reduction instead of LLL (better quality, slower).
     pub use_bkz: bool,
@@ -197,6 +211,10 @@ impl Config {
             ttn_bond_dim: 4,
             transverse_field_alpha: 0.1,
             use_ttn_sampler: true,
+            use_klein_sampling: false,
+            use_hybrid_cvp: false,
+            klein_num_samples: 10,
+            klein_eta: 0.4,
             use_bkz: false,
             bkz_blocksize: 20,
             bkz_progressive: true,
@@ -220,6 +238,8 @@ impl Config {
         cfg.enable_adaptive_bonds = false;
         cfg.gamma = 30;
         cfg.max_cvp = 100;
+        cfg.use_klein_sampling = true;
+        cfg.klein_num_samples = 10;
         cfg
     }
 
@@ -233,6 +253,8 @@ impl Config {
         cfg.max_cvp = 1000;
         cfg.use_bkz = true;
         cfg.bkz_blocksize = 30;
+        cfg.use_hybrid_cvp = true;
+        cfg.klein_num_samples = 20;
         cfg
     }
 
@@ -311,6 +333,21 @@ pub struct FactorResult {
 /// relations are found after exhausting all CVP instances.
 pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
     let start_time = Instant::now();
+
+    // Fast path: perfect squares
+    let sqrt_int = Integer::from(n.sqrt_ref());
+    let sq = Integer::from(&sqrt_int * &sqrt_int);
+    if sq == *n {
+        info!("Perfect square detected: {} = {}²", n, sqrt_int);
+        return Ok(FactorResult {
+            p: sqrt_int.clone(),
+            q: sqrt_int,
+            relations_found: 0,
+            cvp_tried: 0,
+            stats: PipelineStats::default(),
+        });
+    }
+
     let bits = n.significant_bits() as usize;
     info!(
         "Factoring {}-bit semiprime {} with optimized pipeline",
@@ -474,7 +511,56 @@ fn build_and_reduce_lattice<R: Rng>(
     stats.reduction_time_ms += reduction_start.elapsed().as_secs_f64() * 1000.0;
 
     let gso = compute_gram_schmidt(&lattice.basis);
-    let babai = babai_rounding(&lattice.target, &gso, &lattice.basis);
+
+    // Helper: compute fractional projections mu_j from GSO data.
+    // mu_j = dot(target, b_j*) / ||b_j*||^2
+    let compute_fractional_projections = |target: &[i64], gso: &tnss_lattice::babai::GsoData| {
+        let target_f64: Vec<f64> = target.iter().map(|&x| x as f64).collect();
+        gso.orthogonal_basis
+            .iter()
+            .zip(gso.squared_norms.iter())
+            .map(|(ob, &sn)| {
+                if sn > 1e-15 {
+                    ob.iter()
+                        .zip(target_f64.iter())
+                        .map(|(&a, &b)| a * b)
+                        .sum::<f64>()
+                        / sn
+                } else {
+                    0.0
+                }
+            })
+            .collect::<Vec<f64>>()
+    };
+
+    let babai = if cfg.use_hybrid_cvp {
+        debug!("Using hybrid CVP solver (deterministic + Klein sampling)");
+        let mut hybrid_result = hybrid_cvp_solver(&lattice.target, &gso, &lattice.basis);
+        if hybrid_result.fractional_projections.is_empty() {
+            hybrid_result.fractional_projections =
+                compute_fractional_projections(&lattice.target, &gso);
+        }
+        hybrid_result
+    } else if cfg.use_klein_sampling {
+        debug!(
+            "Using Klein sampling: {} samples, eta={}",
+            cfg.klein_num_samples, cfg.klein_eta
+        );
+        let klein_config = KleinConfig {
+            eta: cfg.klein_eta,
+            num_samples: cfg.klein_num_samples,
+            sigma_scale: 1.0,
+        };
+        let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config);
+        tnss_lattice::babai::BabaiResult {
+            closest_lattice_point: klein_result.closest_lattice_point,
+            coefficients: klein_result.coefficients,
+            fractional_projections: compute_fractional_projections(&lattice.target, &gso),
+        }
+    } else {
+        debug!("Using Babai rounding (deterministic)");
+        babai_rounding(&lattice.target, &gso, &lattice.basis)
+    };
 
     let basis_reps = extract_basis_representations(&lattice.basis, lattice.dimension + 1)?;
 
@@ -701,23 +787,17 @@ fn sample_with_index_slicing<R: Rng>(
     sorted
 }
 
-/// Fallback sampling without TTN.
+/// Fallback sampling using classical optimization (exact, greedy, annealing).
 fn sample_fallback<R: Rng>(
     hamiltonian: &CvpHamiltonian,
     gamma: usize,
     rng: &mut R,
 ) -> Vec<(Vec<bool>, f64)> {
-    let n_vars = hamiltonian.n_vars();
-    let mut samples = Vec::with_capacity(gamma);
-
-    for _ in 0..gamma {
-        let bits: Vec<bool> = (0..n_vars).map(|_| rng.random::<f64>() < 0.5).collect();
-        let energy = hamiltonian.energy(&bits);
-        samples.push((bits, energy));
-    }
-
-    samples.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    samples
+    let sampler_cfg = ClassicalSamplerConfig {
+        num_samples: gamma,
+        ..ClassicalSamplerConfig::default()
+    };
+    sample_low_energy(hamiltonian, &sampler_cfg, rng)
 }
 
 /// Process a single sample to extract smooth relation.

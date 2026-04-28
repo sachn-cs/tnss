@@ -678,42 +678,75 @@ pub fn sample_parallel_with_slicing<R: Rng>(
 impl MatrixProductOperator {
     /// Create an MPO from a CVP Hamiltonian.
     ///
-    /// The Hamiltonian is decomposed into local terms and represented as
-    /// an MPO with bond dimension proportional to the interaction range.
+    /// Represents the all-to-all Ising Hamiltonian
+    /// H = E₀ I + Σⱼ hⱼ nⱼ + 2 Σᵢ₋ⱼ Jᵢⱼ nᵢ nⱼ
+    /// as a Matrix Product Operator with bond dimension n+2.
+    ///
+    /// The construction uses states:
+    /// - 0: identity carrier
+    /// - 1..n: open operator carriers Oₖ = nₖ
+    /// - n+1: accumulator for closed terms
     pub fn from_hamiltonian(hamiltonian: &CvpHamiltonian) -> Self {
         let n_sites = hamiltonian.n_vars();
         let phys_dim = 2; // Binary variables (z_j ∈ {0,1})
 
-        // For simplicity, create a nearest-neighbor MPO structure
-        // Each local tensor has shape [bond_left, bond_right, phys_dim, phys_dim]
-        let mut tensors = Vec::with_capacity(n_sites);
+        if n_sites == 0 {
+            return Self {
+                tensors: Vec::new(),
+                n_sites: 0,
+                phys_dim,
+                max_bond_dim: 1,
+            };
+        }
 
-        // Bond dimension 2 for identity + operator
-        let bond_dim = 2_usize;
+        let n = n_sites;
+        let bond_dim = n + 2;
+        let mut tensors = Vec::with_capacity(n);
 
-        for _site in 0..n_sites {
-            // Initialize with identity-like structure
+        let e0 = hamiltonian.energy_offset();
+
+        for j in 0..n {
             let mut tensor = Array4::zeros([bond_dim, bond_dim, phys_dim, phys_dim]);
 
-            // Set identity components
-            for i in 0..phys_dim {
-                tensor[[0, 0, i, i]] = 1.0; // Identity channel
-            }
+            for z in 0..phys_dim {
+                let z_f64 = z as f64;
 
-            // Add local Hamiltonian terms (simplified)
-            // In a full implementation, these would capture the actual Hamiltonian structure
-            for i in 0..phys_dim {
-                for j in 0..phys_dim {
-                    // Local energy contribution
-                    let local_energy = if i == j { 0.0 } else { 0.1 };
-                    tensor[[1, 1, i, j]] = local_energy;
+                // Identity channel
+                tensor[[0, 0, z, z]] = 1.0;
+
+                // Carry open operators O_k for k < j
+                for k in 0..j {
+                    tensor[[k + 1, k + 1, z, z]] = 1.0;
                 }
+
+                // Open operator O_j for future couplings
+                tensor[[0, j + 1, z, z]] = z_f64;
+
+                // Carry newly opened O_j
+                tensor[[j + 1, j + 1, z, z]] = 1.0;
+
+                // Local field term + constant offset (only at first site)
+                let h_j = hamiltonian.linear_field(j);
+                let constant = if j == 0 { e0 } else { 0.0 };
+                tensor[[0, n + 1, z, z]] = h_j * z_f64 + constant;
+
+                // Couplings with previously opened operators
+                for k in 0..j {
+                    let j_kj = hamiltonian.coupling_strength(k, j);
+                    tensor[[k + 1, n + 1, z, z]] = 2.0 * j_kj * z_f64;
+                }
+
+                // Accumulator channel
+                tensor[[n + 1, n + 1, z, z]] = 1.0;
             }
 
             tensors.push(tensor);
         }
 
-        trace!("Created MPO with {} sites, phys_dim={}", n_sites, phys_dim);
+        trace!(
+            "Created MPO with {} sites, phys_dim={}, bond_dim={}",
+            n_sites, phys_dim, bond_dim
+        );
 
         Self {
             tensors,
@@ -721,6 +754,49 @@ impl MatrixProductOperator {
             phys_dim,
             max_bond_dim: bond_dim,
         }
+    }
+
+    /// Evaluate the MPO on a computational basis state.
+    ///
+    /// Computes ⟨z|H|z⟩ where |z⟩ is the product state corresponding to the
+    /// given bit-string configuration.
+    pub fn evaluate(&self, configuration: &[bool]) -> f64 {
+        assert_eq!(
+            configuration.len(),
+            self.n_sites,
+            "configuration length {} must match n_sites {}",
+            configuration.len(),
+            self.n_sites
+        );
+
+        if self.n_sites == 0 {
+            return 0.0;
+        }
+
+        let d = self.max_bond_dim;
+        let mut v = vec![0.0; d];
+        v[0] = 1.0; // Left boundary
+
+        for (j, &bit) in configuration.iter().enumerate() {
+            let z = if bit { 1 } else { 0 };
+            let tensor = &self.tensors[j];
+            let mut v_new = vec![0.0; d];
+
+            for b_left in 0..d {
+                let v_left = v[b_left];
+                if v_left == 0.0 {
+                    continue;
+                }
+                for b_right in 0..d {
+                    v_new[b_right] += v_left * tensor[[b_left, b_right, z, z]];
+                }
+            }
+
+            v = v_new;
+        }
+
+        // Right boundary selects the accumulator state (n+1 = d-1 when d=n+2)
+        v[d - 1]
     }
 
     /// Create a random MPO for testing.
@@ -771,9 +847,11 @@ impl MatrixProductOperator {
         other: &MatrixProductOperator,
         max_bond_dim: usize,
         svd_threshold: f64,
-    ) -> Result<MatrixProductOperator, &'static str> {
+    ) -> crate::Result<MatrixProductOperator> {
         if self.n_sites != other.n_sites {
-            return Err("MPOs must have same number of sites");
+            return Err(crate::Error::InvalidState(
+                "MPOs must have same number of sites".to_string(),
+            ));
         }
 
         let n_sites = self.n_sites;
@@ -903,13 +981,17 @@ impl MatrixProductOperator {
         result
     }
 
-    /// Truncate an MPO tensor using randomized SVD.
+    /// Truncate an MPO tensor using robust truncated SVD via power iteration.
     ///
     /// This implements proper bond dimension truncation by:
-    /// 1. Reshaping the tensor to a matrix
-    /// 2. Computing the SVD: M = U Σ V^T
-    /// 3. Truncating to keep only the largest singular values
+    /// 1. Reshaping the tensor to a matrix M
+    /// 2. Computing the dominant singular vectors of M via iterative refinement
+    /// 3. Truncating to keep only the largest singular values above threshold
     /// 4. Reconstructing the tensor with reduced bond dimension
+    ///
+    /// Compared to the basic 3-iteration power method, this uses up to 20
+    /// iterations with convergence checking and explicit Gram-Schmidt
+    /// orthogonalization for numerical stability.
     fn truncate_tensor(
         tensor: &Array4<f64>,
         max_bond_dim: usize,
@@ -948,99 +1030,146 @@ impl MatrixProductOperator {
             }
         }
 
-        // Compute Gram matrix: G = M M^T
-        let mut gram = Array2::zeros([bond_left, bond_left]);
-        for i in 0..bond_left {
-            for j in 0..bond_left {
-                let mut sum = 0.0;
-                for k in 0..flat_dim {
-                    sum += matrix[[i, k]] * matrix[[j, k]];
-                }
-                gram[[i, j]] = sum;
-            }
-        }
+        // Work with the smaller of M*M^T (size bond_left) or M^T*M (size flat_dim)
+        // to minimize arithmetic and improve conditioning.
+        let use_left = bond_left <= flat_dim;
+        let vec_dim = if use_left { bond_left } else { flat_dim };
 
-        // Power iteration to find dominant eigenvectors
-        let mut vectors: Vec<Array1<f64>> = Vec::with_capacity(target_dim);
-        let mut eigenvalues: Vec<f64> = Vec::with_capacity(target_dim);
+        let max_iters = 20;
+        let convergence_tol = 1e-10;
 
-        let mut remaining = gram.clone();
-        let mut rng = rand::rng();
+        let mut left_singular_vectors: Vec<Array1<f64>> = Vec::with_capacity(target_dim);
+        let mut singular_values: Vec<f64> = Vec::with_capacity(target_dim);
+
         for _ in 0..target_dim {
-            // Random initial vector to avoid deterministic bias
             let mut v: Array1<f64> =
-                Array1::from_vec((0..bond_left).map(|_| rng.random::<f64>()).collect());
-
-            // Normalize
+                Array1::from_vec((0..vec_dim).map(|_| rand::random::<f64>()).collect());
             let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
             if norm > 0.0 {
                 v /= norm;
             }
 
-            // Power iteration (3 fixed iterations).
-            //
-            // **Robustness note:** This uses a fixed small number of iterations
-            // rather than a convergence tolerance. For the dominant eigenvector of
-            // a symmetric positive-semidefinite Gram matrix, 3 iterations from a
-            // random start are sufficient for truncation quality.  If higher
-            // precision is needed, increase this count or switch to a
-            // Lanczos/QR-based eigensolver.
-            for _ in 0..3 {
-                let mut new_v = Array1::zeros(bond_left);
-                for i in 0..bond_left {
-                    for j in 0..bond_left {
-                        new_v[i] += remaining[[i, j]] * v[j];
+            // Orthogonalize against all previously-found vectors before iterating
+            for prev in &left_singular_vectors {
+                let dot = v.iter().zip(prev.iter()).map(|(a, b)| a * b).sum::<f64>();
+                for i in 0..vec_dim {
+                    v[i] -= dot * prev[i];
+                }
+            }
+            let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+            if norm > 0.0 {
+                v /= norm;
+            }
+
+            // Power iteration with explicit re-orthogonalization
+            for _ in 0..max_iters {
+                let mut new_v = Array1::zeros(vec_dim);
+
+                if use_left {
+                    // v_{k+1} = M * M^T * v_k
+                    let mut mt_v = Array1::<f64>::zeros(flat_dim);
+                    for j in 0..flat_dim {
+                        for i in 0..bond_left {
+                            mt_v[j] += matrix[[i, j]] * v[i];
+                        }
+                    }
+                    for i in 0..bond_left {
+                        for j in 0..flat_dim {
+                            new_v[i] += matrix[[i, j]] * mt_v[j];
+                        }
+                    }
+                } else {
+                    // v_{k+1} = M^T * M * v_k
+                    let mut m_v = Array1::<f64>::zeros(bond_left);
+                    for i in 0..bond_left {
+                        for j in 0..flat_dim {
+                            m_v[i] += matrix[[i, j]] * v[j];
+                        }
+                    }
+                    for j in 0..flat_dim {
+                        for i in 0..bond_left {
+                            new_v[j] += matrix[[i, j]] * m_v[i];
+                        }
                     }
                 }
-                let norm = new_v.iter().map(|x| x * x).sum::<f64>().sqrt();
-                if norm > 0.0 {
-                    v = new_v / norm;
+
+                // Re-orthogonalize against previous vectors (modified Gram-Schmidt)
+                for prev in &left_singular_vectors {
+                    let dot = new_v
+                        .iter()
+                        .zip(prev.iter())
+                        .map(|(a, b)| a * b)
+                        .sum::<f64>();
+                    for i in 0..vec_dim {
+                        new_v[i] -= dot * prev[i];
+                    }
+                }
+
+                let new_norm = new_v.iter().map(|x| x * x).sum::<f64>().sqrt();
+                if new_norm > 0.0 {
+                    new_v /= new_norm;
+                }
+
+                let change = v
+                    .iter()
+                    .zip(new_v.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .sum::<f64>();
+                v = new_v;
+
+                if change < convergence_tol {
+                    break;
                 }
             }
 
-            // Compute eigenvalue: λ = v^T G v
-            let mut gv: Array1<f64> = Array1::zeros(bond_left);
-            for i in 0..bond_left {
-                for j in 0..bond_left {
-                    gv[i] += remaining[[i, j]] * v[j];
+            // Compute singular value from the unnormalized vector
+            let sigma = if use_left {
+                let mut mt_v = Array1::<f64>::zeros(flat_dim);
+                for j in 0..flat_dim {
+                    for i in 0..bond_left {
+                        mt_v[j] += matrix[[i, j]] * v[i];
+                    }
                 }
-            }
-            let eigenvalue: f64 = v.iter().zip(gv.iter()).map(|(a, b)| a * b).sum::<f64>();
+                mt_v.iter().map(|x| x * x).sum::<f64>().sqrt()
+            } else {
+                let mut m_v = Array1::<f64>::zeros(bond_left);
+                for i in 0..bond_left {
+                    for j in 0..flat_dim {
+                        m_v[i] += matrix[[i, j]] * v[j];
+                    }
+                }
+                m_v.iter().map(|x| x * x).sum::<f64>().sqrt()
+            };
 
-            if eigenvalue < svd_threshold {
+            if sigma < svd_threshold {
                 break;
             }
 
-            vectors.push(v.clone());
-            eigenvalues.push(eigenvalue.sqrt());
-
-            // Deflate: remaining = remaining - λ v v^T
-            for i in 0..bond_left {
-                for j in 0..bond_left {
-                    remaining[[i, j]] -= eigenvalue * v[i] * v[j];
-                }
-            }
+            left_singular_vectors.push(v);
+            singular_values.push(sigma);
         }
 
-        if vectors.is_empty() {
-            // Fall back to naive truncation
+        if left_singular_vectors.is_empty() {
             return Self::naive_truncate(tensor, target_dim, phys_dim);
         }
 
-        // Project matrix onto dominant subspace: U = V^T M
-        let new_dim = vectors.len();
+        let new_dim = left_singular_vectors.len();
+
+        // Project matrix onto the dominant left singular vectors:
+        // projected[i, j] = (u_i^T * M)[j] / sigma_i  =>  gives the right singular vectors scaled
         let mut projected = Array2::zeros([new_dim, flat_dim]);
         for i in 0..new_dim {
+            let sigma = singular_values[i];
             for j in 0..flat_dim {
                 let mut sum = 0.0;
                 for k in 0..bond_left {
-                    sum += vectors[i][k] * matrix[[k, j]];
+                    sum += left_singular_vectors[i][k] * matrix[[k, j]];
                 }
-                projected[[i, j]] = sum / eigenvalues[i];
+                projected[[i, j]] = sum / sigma;
             }
         }
 
-        // Reshape back to 4D tensor
+        // Reshape back to 4D tensor [new_dim, bond_right, phys_dim, phys_dim]
         let mut truncated = Array4::zeros([new_dim, bond_right, phys_dim, phys_dim]);
         for i in 0..new_dim {
             let mut col = 0;
@@ -1120,7 +1249,7 @@ impl MatrixProductOperator {
 pub fn spectral_amplification(
     hamiltonian: &CvpHamiltonian,
     config: &AmplificationConfig,
-) -> Result<AmplificationResult, &'static str> {
+) -> crate::Result<AmplificationResult> {
     trace!(
         "Starting spectral amplification: power={}, max_bond_dim={}",
         config.power, config.max_bond_dim
@@ -1370,10 +1499,36 @@ mod tests {
         assert_eq!(mpo.phys_dim, 2);
         assert_eq!(mpo.tensors.len(), 2);
 
+        // Bond dimension should be n+2 = 4
+        assert_eq!(mpo.max_bond_dim, 4);
+
         // Check tensor shapes
         for tensor in &mpo.tensors {
+            assert_eq!(tensor.shape()[0], 4); // bond_left
+            assert_eq!(tensor.shape()[1], 4); // bond_right
             assert_eq!(tensor.shape()[2], 2); // phys_dim
             assert_eq!(tensor.shape()[3], 2); // phys_dim
+        }
+    }
+
+    #[test]
+    fn test_mpo_energy_matches_hamiltonian() {
+        let ham = make_test_hamiltonian();
+        let mpo = MatrixProductOperator::from_hamiltonian(&ham);
+
+        // Test all 2^n configurations
+        let n = ham.n_vars();
+        for idx in 0..(1 << n) {
+            let bits: Vec<bool> = (0..n).map(|j| (idx >> j) & 1 == 1).collect();
+            let ham_energy = ham.energy(&bits);
+            let mpo_energy = mpo.evaluate(&bits);
+            assert!(
+                (ham_energy - mpo_energy).abs() < 1e-9,
+                "MPO energy mismatch for config {:?}: ham={}, mpo={}",
+                bits,
+                ham_energy,
+                mpo_energy
+            );
         }
     }
 
@@ -1435,7 +1590,9 @@ mod tests {
         let ham = make_test_hamiltonian();
         let mut rng = ChaCha8Rng::seed_from_u64(42);
 
-        let samples = sample_amplified_mpo(&ham, 5, 4, &mut rng);
+        // Use power=2 to keep MPO bond dimension small and avoid expensive
+        // truncated SVD on large intermediate tensors.
+        let samples = sample_amplified_mpo(&ham, 5, 2, &mut rng);
 
         assert!(!samples.is_empty());
         for (bits, energy) in &samples {

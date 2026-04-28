@@ -9,7 +9,9 @@ This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* 
 
 ## Status
 
-Research-grade, version **0.1.0**. Tested on small-to-medium semiprimes. See [`docs/`](docs/) for detailed stage-by-stage documentation and known limitations.
+Research-grade, version **0.1.1**. Tested on semiprimes up to **14 bits** (~16,000). See [`docs/`](docs/) for detailed stage-by-stage documentation and known limitations.
+
+> **Bit-size note:** The current implementation successfully factors numbers up to 14 bits (e.g., 8633 = 89 × 97). Numbers larger than ~16,000 require algorithmic parameter tuning (lattice dimension, smoothness bound, CVP iterations) that is not yet optimized for this reference implementation.
 
 ## Features
 

@@ -6,6 +6,7 @@
 pub use tnss_core::{Error, LatticeDimension, Result, consts, utils};
 
 pub mod adaptive_bond;
+pub mod classical_sampler;
 pub mod hamiltonian;
 pub mod opes;
 pub mod ttn;

@@ -128,10 +128,10 @@ pub struct CvpHamiltonian {
     target_dimension: usize,
     /// Precomputed quadratic couplings J_ij = Σ_k sign_i * sign_j * d_ik * d_jk.
     /// Used for O(n²) energy evaluation instead of O(n*d).
-    coupling_matrix: Option<Vec<Vec<f64>>>,
+    pub(crate) coupling_matrix: Option<Vec<Vec<f64>>>,
     /// Precomputed linear fields h_j = -2 * Σ_k sign_j * d_jk * r_k.
     /// Used for O(n) contribution to energy.
-    linear_fields: Option<Vec<f64>>,
+    pub(crate) linear_fields: Option<Vec<f64>>,
     /// Constant energy offset: Σ_k r_k².
     energy_offset: f64,
 }
@@ -576,6 +576,31 @@ impl CvpHamiltonian {
     /// Return reference to the residual vector.
     pub fn residual(&self) -> &[f64] {
         &self.residual
+    }
+
+    /// Return the constant energy offset E₀ = ||r||².
+    pub(crate) fn energy_offset(&self) -> f64 {
+        self.energy_offset
+    }
+
+    /// Return the linear field h_j for site j.
+    ///
+    /// h_j = ||d_j||² - 2 Σ_k sign_j d_jk r_k
+    pub(crate) fn linear_field(&self, j: usize) -> f64 {
+        if let Some(fields) = &self.linear_fields {
+            return fields[j];
+        }
+
+        // Compute on the fly
+        let sign_j = self.sign_factors[j].as_f64();
+        let mut sum_resid = 0.0;
+        let mut sum_basis_sq = 0.0;
+        for k in 0..self.target_dimension {
+            let b = sign_j * self.basis_f64(j, k);
+            sum_resid += b * self.residual[k];
+            sum_basis_sq += b * b;
+        }
+        sum_basis_sq - 2.0 * sum_resid
     }
 
     /// Perform greedy local search to refine a configuration.
