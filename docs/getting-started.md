@@ -25,7 +25,7 @@ This guide will help you get started with using and developing TNSS.
 
 ```bash
 # Clone the repository
-git clone https://github.com/sachn-cs/tnss.git
+git clone https://github.com/sachncs/tensor-network-schnorrs-sieving.git
 cd tnss
 
 # Run the setup script (installs toolchain and optional tools)
@@ -348,8 +348,8 @@ For better performance:
 ### Getting Help
 
 - **Documentation**: See the [docs/](../docs/) directory
-- **Issues**: Open an issue on [GitHub](https://github.com/sachn-cs/tnss/issues)
-- **Discussions**: Join the [GitHub Discussions](https://github.com/sachn-cs/tnss/discussions)
+- **Issues**: Open an issue on [GitHub](https://github.com/sachncs/tensor-network-schnorrs-sieving/issues)
+- **Discussions**: Join the [GitHub Discussions](https://github.com/sachncs/tensor-network-schnorrs-sieving/discussions)
 
 ---
 

@@ -1,9 +1,9 @@
 # TNSS - Tensor-Network Schnorr's Sieving
 
-[![CI](https://github.com/sachn-cs/tnss/workflows/CI/badge.svg)](https://github.com/sachn-cs/tnss/actions)
+[![CI](https://github.com/sachncs/tensor-network-schnorrs-sieving/workflows/CI/badge.svg)](https://github.com/sachncs/tensor-network-schnorrs-sieving/actions)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust Version](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/sachn-cs/tnss/releases)
+[![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/sachncs/tensor-network-schnorrs-sieving/releases)
 
 A Rust implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with tensor-network variational methods.
 
@@ -35,7 +35,7 @@ Research-grade, version **0.1.1**. Tested on semiprimes up to **14 bits** (~16,0
 
 ```bash
 # Clone the repository
-git clone https://github.com/sachn-cs/tnss.git
+git clone https://github.com/sachncs/tensor-network-schnorrs-sieving.git
 cd tnss
 
 # Setup environment
