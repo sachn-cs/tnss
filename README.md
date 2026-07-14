@@ -1,87 +1,140 @@
-# TNSS - Tensor-Network Schnorr's Sieving
+<p align="center">
+  <h1 align="center">TNSS</h1>
+  <p align="center">Tensor-Network Schnorr's Sieving — a Rust implementation for integer factorization.</p>
+  <p align="center">
+    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
+    <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green" alt="License"></a>
+    <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/tensor-network-schnorrs-sieving/ci.yml?branch=master" alt="CI"></a>
+    <a href="https://crates.io/crates/tnss"><img src="https://img.shields.io/crates/v/tnss" alt="crates.io"></a>
+    <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/stargazers"><img src="https://img.shields.io/github/stars/sachncs/tensor-network-schnorrs-sieving" alt="Stars"></a>
+  </p>
+</p>
 
-[![CI](https://github.com/sachncs/tensor-network-schnorrs-sieving/workflows/CI/badge.svg)](https://github.com/sachncs/tensor-network-schnorrs-sieving/actions)
-[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
-[![Rust Version](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/sachncs/tensor-network-schnorrs-sieving/releases)
+**Tensor-Network Schnorr's Sieving (TNSS) — Rust implementation for integer factorization, combining lattice-based cryptanalysis with tensor-network variational methods.**
 
-A Rust implementation of **Tensor-Network Schnorr's Sieving (TNSS)** for integer factorization, combining lattice-based cryptanalysis with tensor-network variational methods.
+This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* **113**, 032418 (2026). The workspace ships six crates implementing a 7-stage pipeline from Schnorr lattice construction through LLL/BKZ basis reduction, Babai/Klein CVP, tensor-network variational sampling, and GF(2) factor extraction.
 
-This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* **113**, 032418 (2026).
+Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,000). Numbers larger than ~16,000 require algorithmic parameter tuning (lattice dimension, smoothness bound, CVP iterations) that is not yet optimized for this reference implementation.
 
 ## Features
 
-- **7-Stage Pipeline**: Complete implementation from lattice construction to factor extraction
-- **Workspace Architecture**: 6 crates with clear domain boundaries
-- **Tensor-Network Sampling**: TTN variational optimization, OPES, and MPO spectral amplification
-- **Tested**: 149 unit tests, 4 Criterion benchmarks
-- **Zero unsafe code**, strict clippy compliance
-- **Research-Grade**: Accompanies peer-reviewed publication
-
-## Status
-
-Research-grade, version **0.1.1**. Tested on semiprimes up to **14 bits** (~16,000).
-
-> **Bit-size note**: The current implementation successfully factors numbers up to 14 bits (e.g., 8633 = 89 × 97). Numbers larger than ~16,000 require algorithmic parameter tuning (lattice dimension, smoothness bound, CVP iterations) that is not yet optimized for this reference implementation.
+- **7-stage pipeline** — Complete implementation from lattice construction to factor extraction
+- **Workspace architecture** — 6 crates with clear domain boundaries (`tnss-core`, `tnss-lattice`, `tnss-tensor`, `tnss-sampler`, `tnss-algebra`, `tnss-cli`)
+- **Tensor-network sampling** — TTN variational optimization, OPES, and MPO spectral amplification
+- **Tested** — 149 unit tests, 4 Criterion benchmarks
+- **Zero `unsafe` code**, strict clippy compliance
+- **Research-grade** — Accompanies peer-reviewed publication
 
 ## Installation
 
-### Prerequisites
-
-- Rust 1.85+ (see `rust-toolchain.toml`)
-- `just` (optional, for task runner)
-
-### From Source
+### From crates.io
 
 ```bash
-# Clone the repository
+cargo install tnss-cli
+```
+
+### From source
+
+```bash
 git clone https://github.com/sachncs/tensor-network-schnorrs-sieving.git
-cd tnss
-
-# Setup environment
+cd tensor-network-schnorrs-sieving
 ./setup.sh
-
-# Build the workspace
 cargo build --workspace --release
 ```
 
-## Usage
+### Prerequisites
+
+- Rust **1.85+** (see `rust-toolchain.toml`)
+- `just` (optional, task runner)
+
+## Quick Start
+
+### CLI
 
 ```bash
 # Factor a semiprime
 cargo run -p tnss-cli -- 91
+cargo run -p tnss-cli -- 8633
+# [INFO] Factoring 8633...
+# [INFO] Found factors: 89 × 97
 
-# Run examples
+# Run the bundled examples
 cargo run -p tnss-cli --example basic_factorization -- 91
 cargo run -p tnss-cli --example batch_factorization
 ```
 
-### Examples
+### Rust API
 
-```bash
-# Basic factorization
-$ cargo run -p tnss-cli -- 8633
-[INFO] Factoring 8633...
-[INFO] Found factors: 89 × 97
+```rust
+use tnss_algebra::factorize;
+use tnss_core::Semiprime;
 
-# Batch factorization
-$ cargo run -p tnss-cli --example batch_factorization
-[INFO] Factoring 15: 3 × 5
-[INFO] Factoring 21: 3 × 7
-[INFO] Factoring 91: 7 × 13
-...
+let n: u64 = 8633;
+let result = factorize(Semiprime::new(n))?;
+assert_eq!(result.factors(), (89, 97));
 ```
 
 ## Configuration
 
-TNSS uses environment variables for configuration:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RUST_LOG` | Log level (info, debug, trace) | `info` |
-| `TNSS_LOG` | TNSS-specific log level | `info` |
+| Setting | Env Variable | Default | Description |
+|---------|--------------|---------|-------------|
+| Log level | `RUST_LOG` | `info` | Standard `env_logger` filter |
+| TNSS-specific log level | `TNSS_LOG` | `info` | TNSS-only filter |
 
 No `.env` file is required for basic usage.
+
+## Algorithm Overview
+
+| Stage | Crate | Description |
+|-------|-------|-------------|
+| 1 | `tnss-lattice` | Schnorr lattice construction |
+| 2 | `tnss-lattice` | LLL / segment LLL / BKZ basis reduction |
+| 3 | `tnss-lattice` | Babai rounding and Klein sampling |
+| 4 | `tnss-tensor` | TTN variational ansatz |
+| 5 | `tnss-tensor` | OPES, MPO amplification, fallback samplers |
+| 6 | `tnss-algebra` | Smoothness verification |
+| 7 | `tnss-algebra` | GF(2) linear algebra + GCD |
+
+See [`docs/README.md`](docs/README.md) and [`docs/08-implementation-notes.md`](docs/08-implementation-notes.md) for the full documentation index and known simplifications/limitations.
+
+## API
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| `tnss_core::Semiprime` | struct | Semiprime wrapper with factor targets |
+| `tnss_algebra::factorize` | function | Run the full 7-stage pipeline |
+| `tnss_lattice::lll` / `bkz` / `babai` / `klein` | modules | Lattice reduction and CVP |
+| `tnss_tensor::ttn` / `mpo` / `opes` | modules | Tensor-network samplers |
+| `tnss_sampler` | crate | Fallback samplers (simulated annealing, beam search) |
+| `tnss_cli` | crate | `tnss-cli` binary |
+
+## Crate Dependency Graph
+
+```
+tnss-core (base)
+    ↑
+tnss-lattice → tnss-core
+    ↑
+tnss-tensor → tnss-core, tnss-lattice
+    ↑
+tnss-sampler → tnss-core, tnss-lattice, tnss-tensor
+    ↑
+tnss-algebra → tnss-core, tnss-lattice, tnss-tensor, tnss-sampler
+    ↑
+tnss-cli → all crates
+```
+
+## Documentation
+
+- [Algorithm Overview](docs/00-overview.md)
+- [Stage 1: Lattice Construction](docs/01-stage-1-lattice-construction.md)
+- [Stage 2: Basis Reduction](docs/02-stage-2-basis-reduction.md)
+- [Stage 3: CVP Baseline](docs/03-stage-3-cvp-baseline.md)
+- [Stage 4: Tensor Network](docs/04-stage-4-tensor-network.md)
+- [Stage 5: Optimization Sampling](docs/05-stage-5-optimization-sampling.md)
+- [Stage 6: Smoothness Verification](docs/06-stage-6-smoothness-verification.md)
+- [Stage 7: Factor Extraction](docs/07-stage-7-factor-extraction.md)
+- [Implementation Notes](docs/08-implementation-notes.md)
 
 ## Project Structure
 
@@ -102,170 +155,98 @@ tnss/
 
 ## Development
 
-### Building
-
 ```bash
-# Build entire workspace
-cargo build --workspace --all-features
+cargo build --workspace --all-features               # debug
+cargo build --workspace --all-features --release     # release
 
-# Build specific crate
-cargo build -p tnss-lattice
-
-# Release build
-cargo build --workspace --all-features --release
-```
-
-### Testing
-
-```bash
-# Run all tests
-cargo test --workspace --all-features
-
-# Test specific crate
-cargo test -p tnss-algebra --all-features
-
-# Run benchmarks
-cargo bench --workspace
-```
-
-### Linting and Formatting
-
-```bash
-# Format check
-cargo fmt --all -- --check
-
-# Clippy (strict)
+cargo test  --workspace --all-features               # 149 tests
+cargo bench --workspace                              # 4 Criterion benchmarks
+cargo fmt  --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-# Full validation
-just check
+just check                                          # fmt + clippy + test
+just                                                # list commands
+just doc                                             # rustdoc
+just audit                                           # cargo-deny + cargo-audit
 ```
 
-### Task Runner
-
-This project uses `just` as a task runner. Run `just` to see available commands:
+## Testing
 
 ```bash
-just              # List available commands
-just build        # Build workspace
-just test         # Run tests
-just lint         # Run clippy
-just fmt          # Format code
-just check        # Run all checks
-just doc          # Generate documentation
-just audit        # Run security audit
+cargo test --workspace --all-features        # all crates
+cargo test -p tnss-algebra --all-features    # one crate
+cargo bench --workspace                      # criterion benchmarks
 ```
 
-## Crate Dependencies
+## Build
 
-```
-tnss-core (base)
-    ↑
-tnss-lattice → tnss-core
-    ↑
-tnss-tensor → tnss-core, tnss-lattice
-    ↑
-tnss-sampler → tnss-core, tnss-lattice, tnss-tensor
-    ↑
-tnss-algebra → tnss-core, tnss-lattice, tnss-tensor, tnss-sampler
-    ↑
-tnss-cli → all crates
+```bash
+cargo build --workspace --all-features --release
+# Artifacts:
+#   target/release/tnss-cli
 ```
 
-## Algorithm Overview
+## Release
 
-TNSS implements a 7-stage pipeline:
+```bash
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo fmt  --all -- --check
+# Bump version in workspace Cargo.toml; commit; tag:
+git tag v0.1.X && git push origin v0.1.X
+# .github/workflows/release.yml publishes to crates.io via trusted publishing
+```
 
-| Stage | Crate | Description |
-|-------|-------|-------------|
-| 1 | `tnss-lattice` | Schnorr lattice construction |
-| 2 | `tnss-lattice` | LLL / segment LLL / BKZ basis reduction |
-| 3 | `tnss-lattice` | Babai rounding and Klein sampling |
-| 4 | `tnss-tensor` | TTN variational ansatz |
-| 5 | `tnss-tensor` | OPES, MPO amplification, fallback samplers |
-| 6 | `tnss-algebra` | Smoothness verification |
-| 7 | `tnss-algebra` | GF(2) linear algebra + GCD |
+## Safety and Reliability
 
-See [`docs/README.md`](docs/README.md) for the full documentation index and [`docs/08-implementation-notes.md`](docs/08-implementation-notes.md) for known simplifications and limitations.
+- **Zero `unsafe` code**
+- **Structured error handling** with `thiserror`
+- **Deterministic builds** with committed `Cargo.lock`
+- **Strict quality gates** in CI
+- **Dependency auditing** with `cargo-deny` and `cargo-audit`
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
+| Category | Technology |
+|----------|------------|
 | Language | Rust 2024 Edition |
-| Build System | Cargo |
-| Task Runner | just |
+| Build system | Cargo |
+| Task runner | `just` |
 | CI/CD | GitHub Actions |
 | Linting | Clippy |
 | Formatting | rustfmt |
 | Benchmarks | Criterion |
-| Testing | Built-in test framework + proptest |
-| License Checker | cargo-deny |
-| Security Audit | cargo-audit |
-
-## Safety and Reliability
-
-- **Zero unsafe code**
-- **Structured error handling** with `thiserror`
-- **Deterministic builds** with committed `Cargo.lock`
-- **Strict quality gates** in CI
-- **Dependency auditing** with cargo-deny and cargo-audit
-
-## Documentation
-
-- [Algorithm Overview](docs/00-overview.md)
-- [Stage 1: Lattice Construction](docs/01-stage-1-lattice-construction.md)
-- [Stage 2: Basis Reduction](docs/02-stage-2-basis-reduction.md)
-- [Stage 3: CVP Baseline](docs/03-stage-3-cvp-baseline.md)
-- [Stage 4: Tensor Network](docs/04-stage-4-tensor-network.md)
-- [Stage 5: Optimization Sampling](docs/05-stage-5-optimization-sampling.md)
-- [Stage 6: Smoothness Verification](docs/06-stage-6-smoothness-verification.md)
-- [Stage 7: Factor Extraction](docs/07-stage-7-factor-extraction.md)
-- [Implementation Notes](docs/08-implementation-notes.md)
+| Testing | Built-in test framework + `proptest` |
+| License checker | `cargo-deny` |
+| Security audit | `cargo-audit` |
+| Math primitives | `rug`, `ndarray`, `num-traits`, `num-integer`, `rand`, `rayon` |
+| Lattice reduction | `lll-rs` |
 
 ## Roadmap
 
-- [ ] Optimize for larger bit-sizes (>16 bits)
-- [ ] Add parallel processing support
-- [ ] Implement GPU acceleration for tensor operations
-- [ ] Add more fallback sampling strategies
-- [ ] Create Python bindings
-- [ ] Add comprehensive benchmarks for different number sizes
-- [ ] Implement adaptive parameter tuning
+- **v0.1.x** — Current: 7-stage pipeline, 149 unit tests, 4 Criterion benchmarks, workspace architecture, research-grade.
+- **v0.2.0** — Planned: optimize for larger bit-sizes (>16 bits); parallel processing support; GPU acceleration for tensor operations.
+- **v0.3.0** — Planned: more fallback sampling strategies; Python bindings; comprehensive benchmarks for different number sizes; adaptive parameter tuning.
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
-
-- Forking the repository
-- Branch naming conventions
-- Commit message format
-- Pull request process
-- Coding standards
-- Testing requirements
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Code of Conduct
 
-This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
 
 ## Security
 
-For reporting security vulnerabilities, please see our [Security Policy](SECURITY.md).
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a history of notable changes.
+Report vulnerabilities to **sachncs@gmail.com** — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-Licensed under either of:
+Dual-licensed under either of:
 
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 
 at your option.
-
-### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
 
