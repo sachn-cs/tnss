@@ -39,7 +39,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 
 ### Prerequisites
 
-- Rust 1.85+ (see `rust-toolchain.toml`)
+- Rust 1.88+ (see `rust-toolchain.toml`)
 - `just` (optional, for task runner)
 
 ### Useful Commands
@@ -203,7 +203,7 @@ mod tests {
 Place integration tests in `crates/<crate>/tests/`:
 
 ```rust
-// crates/algebra/tests/integration_tests.rs
+// crates/tensift-algebra/tests/integration_tests.rs
 use tensift_algebra::*;
 
 #[test]

@@ -18,7 +18,7 @@ This guide will help you get started with using and developing TNSS.
 
 ### Prerequisites
 
-- **Rust 1.85+** - Install via [rustup](https://rustup.rs/)
+- **Rust 1.88+** - Install via [rustup](https://rustup.rs/)
 - **Just** (optional) - Install via `cargo install just`
 
 ### From Source
@@ -26,7 +26,7 @@ This guide will help you get started with using and developing TNSS.
 ```bash
 # Clone the repository
 git clone https://github.com/sachncs/tensor-network-schnorrs-sieving.git
-cd tensift
+cd tensor-network-schnorrs-sieving
 
 # Run the setup script (installs toolchain and optional tools)
 ./setup.sh
@@ -93,10 +93,12 @@ cargo run -p tensift-cli -- 8633 10 20 50
 | `n` | Lattice dimension | Auto from bit size |
 | `pi_2` | Smoothness basis size | 2 × n |
 | `gamma` | Samples per CVP instance | 50 |
-| `--seed` | Random seed | 42 |
-| `--max-cvp` | Maximum CVP instances | 500 |
-| `--ttn-bond-dim` | Initial TTN bond dimension | 4 |
-| `--num-slices` | Number of parallel slices | num_cpus |
+| `seed` | Random seed | 42 |
+| `max_cvp` | Maximum CVP instances | 500 |
+| `ttn_bond_dim` | Initial TTN bond dimension | 4 |
+| `num_slices` | Number of parallel slices | num_cpus |
+
+All parameters after `<semiprime>` are positional, in the order `n pi_2 gamma seed max_cvp ttn_bond_dim num_slices`.
 
 ### Examples
 
@@ -111,7 +113,7 @@ cargo run -p tensift-cli -- 8633
 cargo run -p tensift-cli -- 8633 15 30 100
 
 # Use a specific random seed for reproducibility
-cargo run -p tensift-cli -- 8633 --seed 12345
+cargo run -p tensift-cli -- 8633 15 30 100 12345
 ```
 
 ---
@@ -200,14 +202,14 @@ let cvp_result = reduced.babai_cvp();
 |-----------|-------------|-------|---------|
 | `n` | Lattice dimension | 5-100 | Auto |
 | `pi_2` | Smoothness basis size | n-2n | 2×n |
-| `use_bkz` | Enable BKZ reduction | bool | false |
+| `reduce_mode` | Lattice reduction strategy | `ReductionMode` | LLL |
 
 ### Tensor Network Parameters
 
 | Parameter | Description | Range | Default |
 |-----------|-------------|-------|---------|
 | `ttn_bond_dim` | Initial bond dimension | 1-16 | 4 |
-| `svd_threshold` | SVD truncation threshold | 1e-8-1e-4 | 1e-6 |
+| `svd_threshold` | SVD truncation threshold | 1e-14-1e-4 | 1e-12 |
 | `enable_adaptive_bonds` | Adaptive bond dimension | bool | true |
 
 ### Sampling Parameters
@@ -282,7 +284,7 @@ fn main() {
 
 ```rust
 use rug::Integer;
-use tensift_algebra::factor::{factorize, Config};
+use tensift_algebra::factor::{factorize, Config, ReductionMode};
 use std::time::Instant;
 
 fn main() {
@@ -298,7 +300,7 @@ fn main() {
         }),
         ("BKZ", {
             let mut cfg = Config::default_for_bits(bits);
-            cfg.use_bkz = true;
+            cfg.reduce_mode = ReductionMode::Bkz { progressive: true };
             cfg
         }),
     ];
@@ -342,7 +344,7 @@ This can happen with very small or very large lattice dimensions. Try:
 For better performance:
 
 1. Use `--release` flag: `cargo run --release -p tensift-cli -- <number>`
-2. Increase parallel slices: `--num-slices 8`
+2. Increase parallel slices: pass a larger `num_slices` positional argument
 3. Use index slicing (enabled by default)
 
 ### Getting Help

@@ -76,7 +76,7 @@ The combined vector $e_u + e_w \pmod{2}$ is used to build the GF(2) matrix in St
 
 **Function**: `factor_smooth(n, basis) -> Option<Vec<u32>>`
 
-**File**: `crates/algebra/src/smoothness.rs`
+**File**: `crates/tensift-algebra/src/smoothness.rs`
 
 ### Algorithm
 
@@ -100,7 +100,7 @@ The combined vector $e_u + e_w \pmod{2}$ is used to build the GF(2) matrix in St
 
 **Struct**: `SmoothnessBasis`
 
-**File**: `crates/algebra/src/smoothness.rs`
+**File**: `crates/tensift-algebra/src/smoothness.rs`
 
 ```rust
 pub struct SmoothnessBasis {
@@ -118,7 +118,7 @@ pub struct SmoothnessBasis {
 
 **Function**: `try_build_sr_pair(e, primes, n, basis) -> Option<SrPair>`
 
-**File**: `crates/algebra/src/smoothness.rs`
+**File**: `crates/tensift-algebra/src/smoothness.rs`
 
 ### Algorithm
 
@@ -136,7 +136,7 @@ pub struct SmoothnessBasis {
 
 ### Coefficient Extraction
 
-**File**: `crates/algebra/src/factor.rs` (`process_sample`)
+**File**: `crates/tensift-algebra/src/factor.rs` (`process_sample`)
 
 Given a bitstring configuration:
 1. Compute lattice point: `point = hamiltonian.compute_lattice_point(bits, &babai_point)`
@@ -159,7 +159,7 @@ In the main pipeline (`factorize` in `factor.rs`):
 
 ### `SrPair`
 
-**File**: `crates/algebra/src/smoothness.rs`
+**File**: `crates/tensift-algebra/src/smoothness.rs`
 
 ```rust
 pub struct SrPair {
@@ -257,7 +257,7 @@ Where $\pi_2$ = basis size, $D$ = cost of BigInt division, $n$ = lattice dimensi
 
 ## Testing
 
-Tests are in `crates/algebra/src/smoothness.rs` (17 tests):
+Tests are in `crates/tensift-algebra/src/smoothness.rs` (17 tests):
 
 - `test_factor_smooth_positive` — $60 = 2^2 \cdot 3 \cdot 5$ over basis of 5 primes
 - `test_factor_smooth_negative` — $-30$ with sign bit

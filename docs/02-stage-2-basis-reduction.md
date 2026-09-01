@@ -88,7 +88,7 @@ For $\beta = 20$: $\delta \approx 1.012$, for $\beta = 30$: $\delta \approx 1.01
 
 ### 1. LLL Reduction
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 The standard LLL algorithm implemented via the `lll_rs` crate (`bigl2` function). This is the default reduction method.
 
@@ -96,7 +96,7 @@ The standard LLL algorithm implemented via the `lll_rs` crate (`bigl2` function)
 
 ### 2. Segment LLL
 
-**File**: `crates/lattice/src/segment_lll.rs`
+**File**: `crates/tensift-lattice/src/segment_lll.rs`
 
 Divides the lattice basis into segments of size $k$ and reduces them locally:
 
@@ -115,7 +115,7 @@ Segment LLL:
 
 ### 3. BKZ with Pruning
 
-**File**: `crates/lattice/src/bkz.rs`
+**File**: `crates/tensift-lattice/src/bkz.rs`
 
 BKZ with blocksize $\beta$ performs local enumeration on projected sublattices:
 
@@ -130,12 +130,12 @@ BKZ Algorithm:
    Check early abort condition
 ```
 
-**Pruning strategies** (file: `crates/lattice/src/pruning.rs`):
+**Pruning strategies** (file: `crates/tensift-lattice/src/pruning.rs`):
 - **Extreme Pruning** (Chen-Nguyen, 2011): For $\beta \leq 64$, aggressive radii based on Gaussian heuristic
 - **Discrete Pruning** (Aono-Nguyen, 2017): For $\beta > 64$, lattice partitions with ball-box intersections
 - **Auto**: Selects based on blocksize threshold at $\beta = 64$
 
-**When to use**: Enable via `Config.use_bkz = true`. Better basis quality but significantly slower. Progressive BKZ (`Config.bkz_progressive = true`) starts with small blocksize and gradually increases, which is often faster than starting directly with the target blocksize.
+**When to use**: Enable via `Config.reduce_mode = ReductionMode::Bkz { progressive: false }`. Better basis quality but significantly slower. Progressive BKZ (`ReductionMode::Bkz { progressive: true }`) starts with small blocksize and gradually increases, which is often faster than starting directly with the target blocksize.
 
 ---
 
@@ -145,7 +145,7 @@ BKZ Algorithm:
 
 **Function**: `compute_gram_schmidt(basis: &Matrix<BigVector>) -> GsoData`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 Returns:
 - `orthogonal_basis`: GSO vectors $\mathbf{b}_i^*$ as `Vec<Vec<f64>>`
@@ -156,7 +156,7 @@ Returns:
 
 **Function**: `babai_rounding(target, gso, basis) -> BabaiResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 Given target $\mathbf{t}$ and GSO data:
 1. Compute fractional projections: $\mu_j = \langle \mathbf{t}, \mathbf{b}_j^* \rangle / \|\mathbf{b}_j^*\|^2$
@@ -170,7 +170,7 @@ Returns `BabaiResult` containing the closest lattice point, coefficients, fracti
 
 **Function**: `bkz_reduce(basis, config) -> BKZStats`
 
-**File**: `crates/lattice/src/bkz.rs`
+**File**: `crates/tensift-lattice/src/bkz.rs`
 
 **Configuration** (`BKZConfig`):
 - `blocksize`: $\beta$ (larger = better quality, exponentially slower)
@@ -191,7 +191,7 @@ Returns `BabaiResult` containing the closest lattice point, coefficients, fracti
 
 ### `GsoData`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ```rust
 pub struct GsoData {
@@ -203,7 +203,7 @@ pub struct GsoData {
 
 ### `BabaiResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ```rust
 pub struct BabaiResult {
@@ -217,7 +217,7 @@ pub struct BabaiResult {
 
 ### `BKZConfig`
 
-**File**: `crates/lattice/src/bkz.rs`
+**File**: `crates/tensift-lattice/src/bkz.rs`
 
 ```rust
 pub struct BKZConfig {
@@ -239,7 +239,7 @@ pub struct BKZConfig {
 
 ### `BKZStats`
 
-**File**: `crates/lattice/src/bkz.rs`
+**File**: `crates/tensift-lattice/src/bkz.rs`
 
 ```rust
 pub struct BKZStats {
@@ -309,7 +309,7 @@ Where $n$ = lattice dimension, $d$ = vector dimension ($n+1$), $B$ = input bit s
 
 ## Testing
 
-Tests span `crates/lattice/src/babai.rs` (12 tests), `crates/lattice/src/bkz.rs` (6 tests), `crates/lattice/src/segment_lll.rs` (4 tests), and `crates/lattice/src/pruning.rs` (4 tests).
+Tests span `crates/tensift-lattice/src/babai.rs` (12 tests), `crates/tensift-lattice/src/bkz.rs` (6 tests), `crates/tensift-lattice/src/segment_lll.rs` (4 tests), and `crates/tensift-lattice/src/pruning.rs` (4 tests).
 
 Key tests:
 - `test_babai_rounding_identity` — on identity basis

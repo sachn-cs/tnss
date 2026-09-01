@@ -97,7 +97,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 **Function**: `ttn.sweep(hamiltonian, learning_rate)` and `ttn.sweep_adaptive(hamiltonian, learning_rate)`
 
-**File**: `crates/tensor/src/ttn.rs`
+**File**: `crates/tensift-tensor/src/ttn.rs`
 
 ### Algorithm
 
@@ -119,7 +119,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 **Function**: `OpesSampler::sample_with_ttn(ttn, hamiltonian, rng) -> Vec<OpesSample>`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 ### Algorithm
 
@@ -138,7 +138,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 **Function**: `sample_low_energy_configs(hamiltonian, num_samples, bond_dim, rng)`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 1. Create random TTN
 2. Run 10 optimization sweeps
@@ -152,7 +152,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 **Function**: `spectral_amplification(hamiltonian, config) -> Result<AmplificationResult>`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 ### Algorithm
 
@@ -168,7 +168,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 **Function**: `contract_mpo_mpo(other, max_bond_dim, svd_threshold)`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 **Algorithm**:
 1. For each site, contract physical indices:
@@ -189,7 +189,7 @@ The implementation uses successive squaring (binary exponentiation) for efficien
 
 ## Fallback Samplers
 
-When `Config.use_ttn_sampler = false`, the pipeline falls back to direct samplers in `crates/sampler/src/sampler.rs`.
+When `Config.use_ttn_sampler = false`, the pipeline falls back to direct samplers in `crates/tensift-tensor/src/classical_sampler.rs`.
 
 ### Simulated Annealing
 
@@ -232,7 +232,7 @@ When `Config.use_ttn_sampler = false`, the pipeline falls back to direct sampler
 
 ### `OpesSampler`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 ```rust
 pub struct OpesSampler {
@@ -260,7 +260,7 @@ pub struct OpesConfig {
 
 ### `MatrixProductOperator`
 
-**File**: `crates/tensor/src/opes.rs`
+**File**: `crates/tensift-tensor/src/opes.rs`
 
 ```rust
 pub struct MatrixProductOperator {
@@ -284,7 +284,7 @@ pub struct AmplificationConfig {
 
 ### `SimulatedAnnealingSampler`
 
-**File**: `crates/sampler/src/sampler.rs`
+**File**: `crates/tensift-tensor/src/classical_sampler.rs`
 
 ```rust
 pub struct SimulatedAnnealingSampler<R: Rng> {
@@ -310,7 +310,7 @@ pub struct BeamSearchSampler {
 
 ### Main Pipeline Sampling
 
-In `crates/algebra/src/factor.rs`, the `sample_configurations` function decides between TTN and fallback:
+In `crates/tensift-algebra/src/factor.rs`, the `sample_configurations` function decides between TTN and fallback:
 
 ```rust
 if cfg.use_ttn_sampler {
@@ -391,7 +391,7 @@ Where $n$ = number of variables, $\chi$ = bond dimension, $d$ = target dimension
 
 ## Testing
 
-Tests are in `crates/tensor/src/opes.rs` (11 tests) and `crates/sampler/src/sampler.rs` (13 tests).
+Tests are in `crates/tensift-tensor/src/opes.rs` (12 tests).
 
 Key OPES tests:
 - `test_opes_sampler_creation` — default config values

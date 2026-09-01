@@ -62,12 +62,11 @@ Lattice    + GSO         + GSO Data     + Hamiltonian   Configs          Relatio
 
 ```
 crates/
-├── core/         # Types, errors, constants, prime generation, index slicing
-├── lattice/      # Schnorr lattice, LLL, BKZ, Gram-Schmidt, Babai, Klein sampling
-├── tensor/       # TTN, MPO, Hamiltonian, OPES, adaptive bonds, BP gauging
-├── sampler/      # Simulated annealing and beam search samplers
-├── algebra/      # Smoothness testing, GF(2) solver, factorization pipeline
-└── cli/          # Command-line binary and examples
+├── tensift-core/      # Types, errors, constants, prime generation, index slicing
+├── tensift-lattice/   # Schnorr lattice, LLL, BKZ, Gram-Schmidt, Babai, Klein sampling
+├── tensift-tensor/    # TTN, MPO, Hamiltonian, OPES, classical samplers, BP gauging
+├── tensift-algebra/   # Smoothness testing, GF(2) solver, factorization pipeline
+└── tensift-cli/       # Command-line binary and examples
 ```
 
 ---
@@ -75,14 +74,14 @@ crates/
 ## Testing
 
 ```bash
-# Run all unit tests (149 tests)
+# Run all unit and integration tests (121 unit + 14 integration)
 cargo test --workspace
 
 # Run benchmarks (4 Criterion benchmarks)
 cargo bench --workspace
 ```
 
-There are no `#[ignored]` tests in the current codebase. Integration tests are in `crates/algebra/tests/integration_tests.rs`.
+There are no `#[ignored]` tests in the current codebase. Integration tests are in `crates/tensift-algebra/tests/integration_tests.rs`.
 
 ---
 

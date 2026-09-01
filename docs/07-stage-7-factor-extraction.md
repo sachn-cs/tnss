@@ -84,7 +84,7 @@ Matrix operations use word-level XOR on `u64` words for efficiency.
 
 **Function**: `try_extract_factors_optimized(n, sr_pairs, pi_2, combination_trials, basis)`
 
-**File**: `crates/algebra/src/factor.rs`
+**File**: `crates/tensift-algebra/src/factor.rs`
 
 ### Algorithm
 
@@ -100,7 +100,7 @@ Matrix operations use word-level XOR on `u64` words for efficiency.
 
 **Function**: `gaussian_elimination(matrix) -> Vec<usize>`
 
-**File**: `crates/algebra/src/gf2_solver.rs`
+**File**: `crates/tensift-algebra/src/gf2_solver.rs`
 
 ### Algorithm
 
@@ -141,7 +141,7 @@ This is **64x faster** than byte-level XOR and cache-friendly.
 
 **Function**: `kernel_basis(bytes) -> Vec<Vec<u8>>`
 
-**File**: `crates/algebra/src/gf2_solver.rs`
+**File**: `crates/tensift-algebra/src/gf2_solver.rs`
 
 ### Algorithm
 
@@ -158,7 +158,7 @@ This is **64x faster** than byte-level XOR and cache-friendly.
 
 **Function**: `try_tau_vector(n, tau, sr_pairs, pi_2, basis) -> Option<(Integer, Integer)>`
 
-**File**: `crates/algebra/src/factor.rs`
+**File**: `crates/tensift-algebra/src/factor.rs`
 
 ### Algorithm
 
@@ -204,7 +204,7 @@ This is **64x faster** than byte-level XOR and cache-friendly.
 
 ### `BitMatrix`
 
-**File**: `crates/algebra/src/gf2_solver.rs`
+**File**: `crates/tensift-algebra/src/gf2_solver.rs`
 
 ```rust
 pub struct BitMatrix {
@@ -226,7 +226,7 @@ pub struct BitMatrix {
 
 ### `FactorResult`
 
-**File**: `crates/algebra/src/factor.rs`
+**File**: `crates/tensift-algebra/src/factor.rs`
 
 ```rust
 pub struct FactorResult {
@@ -332,7 +332,7 @@ Where $r = \pi_2 + 1$, $c = m$ (number of relations), $p$ = threads.
 
 ## Testing
 
-Tests are in `crates/algebra/src/gf2_solver.rs` (10 tests):
+Tests are in `crates/tensift-algebra/src/gf2_solver.rs` (10 tests):
 
 - `test_bit_matrix_basic` — get/set operations
 - `test_bit_matrix_roundtrip` — from_bytes/to_bytes identity
@@ -345,7 +345,7 @@ Tests are in `crates/algebra/src/gf2_solver.rs` (10 tests):
 - `test_row_xor` — word-level XOR correctness
 - `test_determinism` — same input produces identical kernel
 
-Tests are in `crates/algebra/src/factor.rs` (5 tests):
+Tests are in `crates/tensift-algebra/src/config.rs` (4 tests) and `crates/tensift-algebra/src/extract.rs` (1 test):
 
 - `test_config_defaults` — dimension scales with bit size
 - `test_small_semiprime_config` — small config disables adaptive bonds
@@ -353,7 +353,7 @@ Tests are in `crates/algebra/src/factor.rs` (5 tests):
 - `test_config_parsing` — slices >= 1
 - `test_empty_tau` — empty tau returns None
 
-Integration tests are in `crates/algebra/tests/integration_tests.rs` (11 tests):
+Integration tests are in `crates/tensift-algebra/tests/integration_tests.rs` (14 tests):
 
 - End-to-end factorization tests
 - Prime generation correctness
@@ -366,7 +366,7 @@ Integration tests are in `crates/algebra/tests/integration_tests.rs` (11 tests):
 
 ## Pipeline Integration
 
-Stage 7 is the terminal stage of the `factorize` function in `crates/algebra/src/factor.rs`.
+Stage 7 is the terminal stage of the `factorize` function in `crates/tensift-algebra/src/factor.rs`.
 
 ### Success Path
 
@@ -396,7 +396,7 @@ SchnorrLattice::new
 cargo run -p tensift-cli -- 91
 ```
 
-The CLI binary in `crates/cli/src/main.rs`:
+The CLI binary in `crates/tensift-cli/src/main.rs`:
 1. Parses arguments with `clap`
 2. Calls `factorize`
 3. Prints results with timing statistics

@@ -112,13 +112,13 @@ Both $u$ and $w$ factor completely over a predetermined set of small primes (the
 
 | Stage | Name | Purpose | Key Technique | Primary File |
 |-------|------|---------|---------------|--------------|
-| 1 | **Lattice Construction** | Create Schnorr lattice encoding factorization | Diagonal + logarithmic weights | `crates/lattice/src/lattice.rs` |
-| 2 | **Basis Reduction** | Improve lattice quality for CVP | LLL / BKZ + Gram-Schmidt | `crates/lattice/src/bkz.rs` |
-| 3 | **CVP Baseline** | Find approximate closest vector | Babai rounding + Klein sampling | `crates/lattice/src/babai.rs` |
-| 4 | **Tensor Network** | Build variational ansatz | TTN + BP gauging + adaptive topology | `crates/tensor/src/ttn.rs` |
-| 5 | **Optimization** | Sample low-energy configurations | TTN sweeps + SA / beam search | `crates/tensor/src/opes.rs` |
-| 6 | **Smoothness** | Verify relations over factor base | Trial division | `crates/algebra/src/smoothness.rs` |
-| 7 | **Extraction** | Extract factors via linear algebra | GF(2) elimination + GCD | `crates/algebra/src/gf2_solver.rs` |
+| 1 | **Lattice Construction** | Create Schnorr lattice encoding factorization | Diagonal + logarithmic weights | `crates/tensift-lattice/src/lattice.rs` |
+| 2 | **Basis Reduction** | Improve lattice quality for CVP | LLL / BKZ + Gram-Schmidt | `crates/tensift-lattice/src/bkz.rs` |
+| 3 | **CVP Baseline** | Find approximate closest vector | Babai rounding + Klein sampling | `crates/tensift-lattice/src/babai.rs` |
+| 4 | **Tensor Network** | Build variational ansatz | TTN + BP gauging + adaptive topology | `crates/tensift-tensor/src/ttn.rs` |
+| 5 | **Optimization** | Sample low-energy configurations | TTN sweeps + SA / beam search | `crates/tensift-tensor/src/opes.rs` |
+| 6 | **Smoothness** | Verify relations over factor base | Trial division | `crates/tensift-algebra/src/smoothness.rs` |
+| 7 | **Extraction** | Extract factors via linear algebra | GF(2) elimination + GCD | `crates/tensift-algebra/src/gf2_solver.rs` |
 
 ---
 

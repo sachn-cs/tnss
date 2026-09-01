@@ -31,7 +31,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## Simplified MPO Representation
 
-**Location**: `crates/tensor/src/opes.rs` — `MatrixProductOperator::from_hamiltonian`
+**Location**: `crates/tensift-tensor/src/opes.rs` — `MatrixProductOperator::from_hamiltonian`
 
 **Current behavior**: The MPO is constructed as a nearest-neighbor identity-like structure with dummy local energy terms (0.1 for off-diagonal). It does **not** encode the actual CVP Hamiltonian structure.
 
@@ -43,7 +43,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## Custom Power-Iteration SVD
 
-**Location**: `crates/tensor/src/opes.rs` — `MatrixProductOperator::truncate_tensor`
+**Location**: `crates/tensift-tensor/src/opes.rs` — `MatrixProductOperator::truncate_tensor`
 
 **Current behavior**: Truncation uses 3 fixed iterations of power iteration on the Gram matrix, not a true SVD or randomized SVD.
 
@@ -58,7 +58,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## Segment LLL Parallelization
 
-**Location**: `crates/lattice/src/segment_lll.rs`
+**Location**: `crates/tensift-lattice/src/segment_lll.rs`
 
 **Current behavior**: The `parallel_local_lll` function processes even-indexed segments sequentially, then odd-indexed segments sequentially. The comment states:
 
@@ -72,7 +72,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## BKZ Enumeration
 
-**Location**: `crates/lattice/src/bkz.rs`
+**Location**: `crates/tensift-lattice/src/bkz.rs`
 
 **Current behavior**:
 - For blocks $\beta \leq 3$: tries all coefficient combinations in $[-2, 2]$
@@ -86,7 +86,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## Adaptive Bond Resizing
 
-**Location**: `crates/tensor/src/ttn.rs` — `TreeTensorNetwork::resize_bond`
+**Location**: `crates/tensift-tensor/src/ttn.rs` — `TreeTensorNetwork::resize_bond`
 
 **Current behavior**: `resize_bond` updates the `bond_dim` field on the node and the `BondInfo` struct, but **does not resize the actual `ndarray` tensor data**.
 
@@ -98,7 +98,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## Klein Sampling Fallback
 
-**Location**: `crates/lattice/src/babai.rs` — `sample_discrete_gaussian`
+**Location**: `crates/tensift-lattice/src/babai.rs` — `sample_discrete_gaussian`
 
 **Current behavior**: If rejection sampling fails 1000 times, the algorithm falls back to `safe_round_to_i64(center)`.
 
@@ -113,7 +113,7 @@ This document catalogs known simplifications and limitations in the TNSS impleme
 
 ## TTN Leaf Optimization
 
-**Location**: `crates/tensor/src/ttn.rs` — `TreeTensorNetwork::optimize_leaf`
+**Location**: `crates/tensift-tensor/src/ttn.rs` — `TreeTensorNetwork::optimize_leaf`
 
 **Current behavior**: Gradients are computed by finite differences with $\epsilon = 10^{-6}$:
 ```rust
@@ -128,7 +128,7 @@ grad = (H(z_j = 1) - H(z_j = 0)) / (2 * epsilon)
 
 ## OPES Partition Function
 
-**Location**: `crates/tensor/src/opes.rs` — `OpesSampler::estimate_partition_function`
+**Location**: `crates/tensift-tensor/src/opes.rs` — `OpesSampler::estimate_partition_function`
 
 **Current behavior**:
 - Uses 100 random samples
@@ -143,19 +143,19 @@ grad = (H(z_j = 1) - H(z_j = 0)) / (2 * epsilon)
 
 ## Index Slicing Terminology
 
-**Location**: `crates/algebra/src/factor.rs` — `sample_with_index_slicing`
+**Location**: `crates/tensift-algebra/src/factor.rs` — `sample_with_index_slicing`
 
 **Current behavior**: The function name "index slicing" refers to parallel evaluation of candidate configurations across threads, not slicing of tensor contraction indices. The `SliceConfig` is used to partition the candidate list, not the bond dimension.
 
-**Note**: The TTN module (`ttn.rs`) does implement actual bond-dimension slicing in `contract_node_parallel`, which is a separate feature.
+**Note**: Earlier versions implemented actual bond-dimension slicing in `ttn.rs` via `contract_node_parallel`; that path was removed in the 0.1.1 refactor. "Index slicing" now refers solely to parallel candidate evaluation in the factor pipeline.
 
-**Impact**: Terminology may be confusing. The two "slicing" concepts are distinct.
+**Impact**: The name is historical; no tensor bond slicing exists in the current codebase.
 
 ---
 
 ## Weighted Topology Construction
 
-**Location**: `crates/tensor/src/ttn.rs` — `build_from_cluster_tree`
+**Location**: `crates/tensift-tensor/src/ttn.rs` — `build_from_cluster_tree`
 
 **Current behavior**: The cluster tree construction only processes the first two children per merge when creating internal nodes. If a cluster has more than two children, additional children are ignored.
 
@@ -175,17 +175,17 @@ The codebase contains **no TODO or FIXME comments**. While this indicates a clea
 
 | Crate | Test Functions | Key Untested Paths |
 |-------|---------------|-------------------|
-| `tensift-core` | 12 | Large prime generation (> 10,000), index slicing with work stealing |
+| `tensift-core` | 8 | Large prime generation (> 10,000), index slicing with work stealing |
 | `tensift-lattice` | 38 | Full BKZ with large blocksize (> 10), parallel segment LLL |
 | `tensift-tensor` | 43 | MPO spectral amplification with power > 8, adaptive bond resizing |
-| `tensift-algebra` | 43 | Factor extraction with large kernels (> 100 vectors), timeout paths |
-| **Total** | **124** | |
+| `tensift-algebra` | 32 | Factor extraction with large kernels (> 100 vectors), timeout paths |
+| **Total** | **121** | (plus 14 integration tests) |
 
-**Benchmarks**: 4 Criterion benchmarks in `crates/algebra/benches/factorization.rs`:
-- `bench_small_factorization` (factors 91)
-- `bench_medium_factorization` (factors 1,022,117)
-- `bench_prime_generation` (1,000 and 10,000 primes)
-- `bench_lattice_construction` (dimensions 10 and 50)
+**Benchmarks**: 4 Criterion benchmarks:
+- `crates/tensift-algebra/benches/factorization.rs` — `bench_factor_small` (91), `bench_factor_medium` (5183), `bench_factor_large` (8633)
+- `crates/tensift-core/benches/primes.rs` — `bench_first_n_primes`
+- `crates/tensift-lattice/benches/lattice_reduction.rs` — `bench_lattice_construction`, `bench_lll_reduction`
+- `crates/tensift-tensor/benches/sampler.rs` — `bench_classical_sampler`
 
 **No `#[ignored]` tests** exist in the codebase.
 
@@ -200,7 +200,6 @@ The codebase contains **no TODO or FIXME comments**. While this indicates a clea
 | Bit-packed GF(2) elimination | 64x vs byte storage | Word-level XOR |
 | Parallel sample evaluation | ~p× with p threads | `rayon` work-stealing |
 | Fast Hamiltonian evaluation | 2–5× vs standard | Precomputed couplings for $n \leq 1000$ |
-| TTN fast amplitude | ~90% fewer allocations | `ContractionBuffers` reuse |
 
 ### Known Bottlenecks
 
@@ -215,12 +214,12 @@ The codebase contains **no TODO or FIXME comments**. While this indicates a clea
 
 ## Version Information
 
-- **Current version**: 0.1.0
+- **Current version**: 0.1.1
 - **Rust edition**: 2024
-- **Minimum Rust version**: 1.85
-- **Workspace crates**: 6
-- **Total Rust source files**: 26 (23 lib + 2 examples + 1 bench)
-- **Total lines of Rust code**: ~13,300
+- **Minimum Rust version**: 1.88
+- **Workspace crates**: 5
+- **Total Rust source files**: 30 (23 lib + 3 examples + 4 benches)
+- **Total lines of Rust code**: ~12,600
 
 ---
 

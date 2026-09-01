@@ -1,18 +1,18 @@
 <p align="center">
-  <h1 align="center">TNSS</h1>
+  <h1 align="center">tensift</h1>
   <p align="center">Tensor-Network Schnorr's Sieving — a Rust implementation for integer factorization.</p>
   <p align="center">
-    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
+    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.88%2B-orange" alt="Rust"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green" alt="License"></a>
     <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/tensor-network-schnorrs-sieving/ci.yml?branch=master" alt="CI"></a>
-    <a href="https://crates.io/crates/tensift"><img src="https://img.shields.io/crates/v/tensift" alt="crates.io"></a>
+    <a href="https://crates.io/crates/tensift-cli"><img src="https://img.shields.io/crates/v/tensift-cli" alt="crates.io"></a>
     <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/stargazers"><img src="https://img.shields.io/github/stars/sachncs/tensor-network-schnorrs-sieving" alt="Stars"></a>
   </p>
 </p>
 
 **Tensor-Network Schnorr's Sieving (TNSS) — Rust implementation for integer factorization, combining lattice-based cryptanalysis with tensor-network variational methods.**
 
-This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* **113**, 032418 (2026). The workspace ships six crates implementing a 7-stage pipeline from Schnorr lattice construction through LLL/BKZ basis reduction, Babai/Klein CVP, tensor-network variational sampling, and GF(2) factor extraction.
+This is the reference implementation accompanying Tesoro et al., *Phys. Rev. A* **113**, 032418 (2026). The workspace ships five crates implementing a 7-stage pipeline from Schnorr lattice construction through LLL/BKZ basis reduction, Babai/Klein CVP, tensor-network variational sampling, and GF(2) factor extraction.
 
 Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,000). Numbers larger than ~16,000 require algorithmic parameter tuning (lattice dimension, smoothness bound, CVP iterations) that is not yet optimized for this reference implementation.
 
@@ -21,7 +21,7 @@ Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,00
 - **7-stage pipeline** — Complete implementation from lattice construction to factor extraction
 - **Workspace architecture** — 5 crates with clear domain boundaries (`tensift-core`, `tensift-lattice`, `tensift-tensor`, `tensift-algebra`, `tensift-cli`)
 - **Tensor-network sampling** — TTN variational optimization, OPES, and MPO spectral amplification
-- **Tested** — 149 unit tests, 4 Criterion benchmarks
+- **Tested** — 121 unit tests, 14 integration tests, 4 Criterion benchmarks
 - **Zero `unsafe` code**, strict clippy compliance
 - **Research-grade** — Accompanies peer-reviewed publication
 
@@ -44,7 +44,7 @@ cargo build --workspace --release
 
 ### Prerequisites
 
-- Rust **1.85+** (see `rust-toolchain.toml`)
+- Rust **1.88+** (see `rust-toolchain.toml`)
 - `just` (optional, task runner)
 
 ## Quick Start
@@ -155,7 +155,7 @@ tensift/
 cargo build --workspace --all-features               # debug
 cargo build --workspace --all-features --release     # release
 
-cargo test  --workspace --all-features               # 149 tests
+cargo test  --workspace --all-features               # 121 unit + 14 integration tests
 cargo bench --workspace                              # 4 Criterion benchmarks
 cargo fmt  --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -219,7 +219,7 @@ git tag v0.1.X && git push origin v0.1.X
 
 ## Roadmap
 
-- **v0.1.x** — Current: 7-stage pipeline, 149 unit tests, 4 Criterion benchmarks, workspace architecture, research-grade.
+- **v0.1.x** — Current: 7-stage pipeline, 121 unit tests, 14 integration tests, 4 Criterion benchmarks, workspace architecture, research-grade.
 - **v0.2.0** — Planned: optimize for larger bit-sizes (>16 bits); parallel processing support; GPU acceleration for tensor operations.
 - **v0.3.0** — Planned: more fallback sampling strategies; Python bindings; comprehensive benchmarks for different number sizes; adaptive parameter tuning.
 

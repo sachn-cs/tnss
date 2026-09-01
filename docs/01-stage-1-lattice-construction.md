@@ -123,7 +123,7 @@ This is accurate within $\ln(2) \approx 0.69$ for the exponent.
 
 ### `SchnorrLattice`
 
-Located in: `crates/lattice/src/lattice.rs`
+Located in: `crates/tensift-lattice/src/lattice.rs`
 
 ```rust
 pub struct SchnorrLattice {
@@ -203,7 +203,7 @@ The $O(n^2)$ space is for the basis matrix; all other structures are $O(n)$.
 
 ## Testing
 
-Tests are in `crates/lattice/src/lattice.rs` (12 tests):
+Tests are in `crates/tensift-lattice/src/lattice.rs` (12 tests):
 
 - `test_primes_integration` — verifies `first_n_primes` correctness
 - `test_lattice_dimensions` — checks basis and target dimensions

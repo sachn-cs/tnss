@@ -103,7 +103,7 @@ This is faster than SVD-based canonicalization and improves numerical stability.
 
 **Function**: `TreeTensorNetwork::new_with_config(n_qubits, config, rng)`
 
-**File**: `crates/tensor/src/ttn.rs`
+**File**: `crates/tensift-tensor/src/ttn.rs`
 
 **Algorithm**:
 1. Create $n$ leaf nodes with random normalized tensors `[2, bond_dim, 1]`
@@ -134,25 +134,16 @@ Computes the wavefunction amplitude for a bit configuration via bottom-up contra
 2. Process internal nodes in topological order
 3. Return the root tensor's single scalar value
 
-**Fast variant**: `amplitude_fast(bits, buffers) -> Result<f64, &str>`
+**Note**: An earlier `amplitude_fast` fast path with pre-allocated `ContractionBuffers` was removed in the 0.1.1 refactor; `amplitude` now allocates only the scratch tensors it needs per call.
 
-Uses pre-allocated `ContractionBuffers` to eliminate heap allocations:
-```rust
-pub struct ContractionBuffers {
-    pub node_tensors: Vec<Vec<f64>>,
-    pub node_ready: Vec<bool>,
-    pub ready_queue: VecDeque<usize>,
-}
-```
+### Parallel Evaluation
 
-### Parallel Contraction
+Parallelism lives at the sampling level rather than the bond level:
 
-**Function**: `contract_node_parallel(node_idx, left, right, slice_config) -> Array2<f64>`
+- **`probabilities_parallel`** evaluates all (or sampled) configurations across threads
+- **Index slicing** (`SliceConfig` in the factor pipeline) partitions candidate configurations across threads
 
-Slices the parent bond dimension across threads using `rayon`:
-- Splits bond into `num_slices` chunks
-- Each chunk contracts independently via `contract_node_core`
-- Results are merged into the final tensor
+The previous `contract_node_parallel` bond-dimension slicing path was removed in the 0.1.1 refactor.
 
 ### Probability Evaluation
 
@@ -170,7 +161,7 @@ For $n \leq 20$, enumerates all $2^n$ configurations in parallel. For $n > 20$, 
 
 **Function**: `bp_gauging() -> BPGaugeResult`
 
-**File**: `crates/tensor/src/ttn.rs`
+**File**: `crates/tensift-tensor/src/ttn.rs`
 
 ### Algorithm
 
@@ -204,7 +195,7 @@ For leaf nodes: returns uniform message. For internal nodes: multiplies all inco
 
 **Function**: `new_weighted_topology(n_qubits, couplings, config, rng)`
 
-**File**: `crates/tensor/src/ttn.rs`
+**File**: `crates/tensift-tensor/src/ttn.rs`
 
 ### Algorithm
 
@@ -235,7 +226,7 @@ Estimates pairwise couplings by finite differences:
 
 ### `TreeTensorNetwork`
 
-**File**: `crates/tensor/src/ttn.rs`
+**File**: `crates/tensift-tensor/src/ttn.rs`
 
 ```rust
 pub struct TreeTensorNetwork {
@@ -267,7 +258,7 @@ pub struct TTNNode {
 
 ### `CvpHamiltonian`
 
-**File**: `crates/tensor/src/hamiltonian.rs`
+**File**: `crates/tensift-tensor/src/hamiltonian.rs`
 
 ```rust
 pub struct CvpHamiltonian {
@@ -379,7 +370,7 @@ Where $n$ = number of variables, $\chi$ = bond dimension, $d$ = target dimension
 
 ## Testing
 
-Tests are in `crates/tensor/src/ttn.rs` (12 tests) and `crates/tensor/src/hamiltonian.rs` (11 tests).
+Tests are in `crates/tensift-tensor/src/ttn.rs` (11 tests) and `crates/tensift-tensor/src/hamiltonian.rs` (11 tests).
 
 Key TTN tests:
 - `test_ttn_creation` — 4 qubits produce 7 nodes
@@ -387,7 +378,6 @@ Key TTN tests:
 - `test_single_qubit` — single-node tree
 - `test_adaptive_bonds` — adaptive manager exists when enabled
 - `test_parallel_probabilities` — all 8 configurations for 3 qubits
-- `test_contract_node_parallel` — parallel contraction produces valid shape
 - `test_bp_gauging` — BP runs and produces entropies
 - `test_compute_couplings_from_hamiltonian` — detects Ising couplings
 - `test_weighted_topology_creation` — weighted tree has correct node count
@@ -410,7 +400,7 @@ Stage 4 outputs feed into Stage 5:
 - TTN probabilities guide sampling toward low-energy configurations
 - Hamiltonian couplings drive adaptive-weighted topology (if used)
 
-The main pipeline (`factorize` in `crates/algebra/src/factor.rs`) creates a TTN, runs 10 optimization sweeps, then samples configurations either via index slicing or OPES.
+The main pipeline (`factorize` in `crates/tensift-algebra/src/factor.rs`) creates a TTN, runs 10 optimization sweeps, then samples configurations either via index slicing or OPES.
 
 ---
 

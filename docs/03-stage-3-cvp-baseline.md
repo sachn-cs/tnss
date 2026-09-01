@@ -82,7 +82,7 @@ The algorithm samples $c_j$ from this distribution for each dimension, processin
 
 **Function**: `babai_rounding(target, gso, basis) -> BabaiResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ### Algorithm
 
@@ -106,7 +106,7 @@ An alternative formulation that processes the target vector directly against the
 
 **Function**: `klein_sampling(target, basis, gso, config) -> KleinSamplingResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ### Algorithm
 
@@ -148,7 +148,7 @@ pub struct KleinConfig {
 
 **Function**: `hybrid_cvp_solver(target, basis, gso, config) -> BabaiResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 Combines deterministic Babai rounding with Klein sampling:
 1. Compute Babai point as baseline
@@ -163,7 +163,7 @@ This provides the best of both worlds: deterministic guarantee (Babai) plus rand
 
 ### `BabaiResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ```rust
 pub struct BabaiResult {
@@ -177,7 +177,7 @@ pub struct BabaiResult {
 
 ### `KleinSamplingResult`
 
-**File**: `crates/lattice/src/babai.rs`
+**File**: `crates/tensift-lattice/src/babai.rs`
 
 ```rust
 pub struct KleinSamplingResult {
@@ -247,7 +247,7 @@ Where $n$ = lattice dimension, $d$ = vector dimension ($n+1$), $k$ = number of K
 
 ## Testing
 
-Tests are in `crates/lattice/src/babai.rs` (12 tests):
+Tests are in `crates/tensift-lattice/src/babai.rs` (12 tests):
 
 - `test_babai_rounding_identity` — identity basis
 - `test_babai_rounding_2d` — 2D lattice with known solution
