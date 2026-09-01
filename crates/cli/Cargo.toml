@@ -21,9 +21,9 @@ tnss-core = { path = "../core" }
 tnss-lattice = { path = "../lattice" }
 tnss-tensor = { path = "../tensor" }
 tnss-algebra = { path = "../algebra" }
-clap = { version = "4", features = ["derive"] }
+clap = { workspace = true }
 rug = { workspace = true }
 log = { workspace = true }
-env_logger = "0.11"
+env_logger = { workspace = true }
 
 [dev-dependencies]
