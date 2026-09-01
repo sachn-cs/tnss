@@ -1,0 +1,31 @@
+[package]
+name = "tensift-tensor"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Tensor network operations and Hamiltonian optimization for TNSS"
+
+[dependencies]
+tensift-core = { path = "../tensift-core" }
+rug = { workspace = true }
+ndarray = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true }
+
+[[bench]]
+name = "sampler"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }

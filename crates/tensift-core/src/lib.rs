@@ -1,0 +1,108 @@
+//! TNSS Core - Types, errors, and utilities for Tensor-Network Schnorr's Sieving.
+
+#![warn(missing_docs)]
+#![warn(rust_2018_idioms)]
+
+use thiserror::Error;
+
+/// Errors that can occur during the TNSS factorization pipeline.
+// Name kept as `Error` for ergonomic use with `tensift_core::Result`; the module
+// path (`tensift_core::Error`) provides sufficient disambiguation.
+#[derive(Debug, Error, Clone)]
+pub enum Error {
+    /// Invalid parameter provided.
+    #[error("invalid parameter: {0}")]
+    InvalidParameter(String),
+    /// GF(2) solver encountered an error.
+    #[error("GF(2) solver error: {0}")]
+    Gf2Solver(String),
+    /// Insufficient smooth relations collected.
+    #[error("insufficient smooth relations: needed {needed}, found {found}")]
+    InsufficientSmoothRelations {
+        /// Number of smooth relations needed for the linear algebra step.
+        needed: usize,
+        /// Number of smooth relations actually found.
+        found: usize,
+    },
+    /// Numerical overflow in computation.
+    #[error("numerical overflow: {0}")]
+    NumericalOverflow(String),
+    /// Invalid state encountered (internal error).
+    #[error("invalid state: {0}")]
+    InvalidState(String),
+}
+
+impl From<String> for Error {
+    fn from(msg: String) -> Self {
+        Self::InvalidState(msg)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(msg: &str) -> Self {
+        Self::InvalidState(msg.to_owned())
+    }
+}
+
+/// Result type alias for TNSS operations.
+pub type Result<T> = core::result::Result<T, Error>;
+
+/// Mathematical constants used throughout.
+pub mod constants {
+    /// Machine epsilon for f64 comparisons.
+    pub const EPSILON: f64 = 1e-12;
+}
+
+/// Re-export of [`constants`] for backward compatibility.
+pub use constants as consts;
+
+/// Prime number generation and utilities.
+pub mod primes;
+
+/// Index slicing for parallel configuration space partitioning.
+pub mod index_slicing;
+
+/// Utility functions.
+pub mod utils {
+    use super::constants::*;
+
+    // ------------------------------------------------------------------
+    // Floating-point helpers
+    // ------------------------------------------------------------------
+
+    /// Compare two f64 values with epsilon tolerance.
+    #[inline]
+    pub fn approx_eq(a: f64, b: f64) -> bool {
+        (a - b).abs() < EPSILON
+    }
+
+    /// Safe rounding with NaN/inf handling.
+    #[inline]
+    pub fn safe_round_to_i64(x: f64) -> i64 {
+        if !x.is_finite() {
+            return 0;
+        }
+        let r = x.round();
+        if r > i64::MAX as f64 {
+            i64::MAX
+        } else if r < i64::MIN as f64 {
+            i64::MIN
+        } else {
+            r as i64
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Integer helpers
+    // ------------------------------------------------------------------
+
+    /// Compute log base 2 of a positive integer.
+    #[inline]
+    pub fn log2_ceil(n: usize) -> usize {
+        if n <= 1 {
+            0
+        } else {
+            64 - n.leading_zeros() as usize
+        }
+    }
+}

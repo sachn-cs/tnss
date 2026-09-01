@@ -26,7 +26,7 @@ This guide will help you get started with using and developing TNSS.
 ```bash
 # Clone the repository
 git clone https://github.com/sachncs/tensor-network-schnorrs-sieving.git
-cd tnss
+cd tensift
 
 # Run the setup script (installs toolchain and optional tools)
 ./setup.sh
@@ -54,7 +54,7 @@ Factor a semiprime from the command line:
 
 ```bash
 # Factor 91 (7 × 13)
-cargo run -p tnss-cli -- 91
+cargo run -p tensift-cli -- 91
 
 # Output:
 # [INFO] TNSS Optimized Factorization Pipeline
@@ -77,10 +77,10 @@ cargo run -p tnss-cli -- 91
 
 ```bash
 # Factor a specific number
-cargo run -p tnss-cli -- 8633
+cargo run -p tensift-cli -- 8633
 
 # Factor with custom parameters
-cargo run -p tnss-cli -- 8633 10 20 50
+cargo run -p tensift-cli -- 8633 10 20 50
 #                                        ↑  ↑   ↑
 #                                        n  pi2 gamma
 ```
@@ -102,16 +102,16 @@ cargo run -p tnss-cli -- 8633 10 20 50
 
 ```bash
 # Factor a small semiprime
-cargo run -p tnss-cli -- 91
+cargo run -p tensift-cli -- 91
 
 # Factor a larger semiprime
-cargo run -p tnss-cli -- 8633
+cargo run -p tensift-cli -- 8633
 
 # Use custom lattice dimension
-cargo run -p tnss-cli -- 8633 15 30 100
+cargo run -p tensift-cli -- 8633 15 30 100
 
 # Use a specific random seed for reproducibility
-cargo run -p tnss-cli -- 8633 --seed 12345
+cargo run -p tensift-cli -- 8633 --seed 12345
 ```
 
 ---
@@ -122,7 +122,7 @@ cargo run -p tnss-cli -- 8633 --seed 12345
 
 ```toml
 [dependencies]
-tnss-algebra = { path = "path/to/tnss/crates/algebra" }
+tensift-algebra = { path = "path/to/tensift/crates/algebra" }
 rug = "1.29"
 ```
 
@@ -130,7 +130,7 @@ rug = "1.29"
 
 ```rust
 use rug::Integer;
-use tnss_algebra::factor::{factorize, Config, FactorResult};
+use tensift_algebra::factor::{factorize, Config, FactorResult};
 
 fn main() {
     let n = Integer::from(91u64);
@@ -151,7 +151,7 @@ fn main() {
 
 ```rust
 use rug::Integer;
-use tnss_algebra::factor::{factorize, Config};
+use tensift_algebra::factor::{factorize, Config};
 
 fn main() {
     let n = Integer::from(8633u64);
@@ -173,9 +173,9 @@ fn main() {
 ### Using Individual Stages
 
 ```rust
-use tnss_lattice::{Lattice, LatticeConfig};
-use tnss_tensor::TensorNetwork;
-use tnss_algebra::smoothness::SmoothnessTester;
+use tensift_lattice::{Lattice, LatticeConfig};
+use tensift_tensor::TensorNetwork;
+use tensift_algebra::smoothness::SmoothnessTester;
 
 // Stage 1: Build Schnorr lattice
 let lattice_config = LatticeConfig::new(8633, 10);
@@ -232,7 +232,7 @@ let cvp_result = reduced.babai_cvp();
 ### Example 1: Factor a Small Number
 
 ```bash
-cargo run -p tnss-cli -- 91
+cargo run -p tensift-cli -- 91
 ```
 
 **Output:**
@@ -256,7 +256,7 @@ cargo run -p tnss-cli -- 91
 
 ```rust
 use rug::Integer;
-use tnss_algebra::factor::{factorize, Config};
+use tensift_algebra::factor::{factorize, Config};
 
 fn main() {
     let semiprimes = vec![91, 143, 323, 899, 1517, 2021, 8633];
@@ -282,7 +282,7 @@ fn main() {
 
 ```rust
 use rug::Integer;
-use tnss_algebra::factor::{factorize, Config};
+use tensift_algebra::factor::{factorize, Config};
 use std::time::Instant;
 
 fn main() {
@@ -341,7 +341,7 @@ This can happen with very small or very large lattice dimensions. Try:
 
 For better performance:
 
-1. Use `--release` flag: `cargo run --release -p tnss-cli -- <number>`
+1. Use `--release` flag: `cargo run --release -p tensift-cli -- <number>`
 2. Increase parallel slices: `--num-slices 8`
 3. Use index slicing (enabled by default)
 

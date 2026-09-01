@@ -23,8 +23,8 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/tnss.git
-   cd tnss
+   git clone https://github.com/YOUR_USERNAME/tensift.git
+   cd tensift
    ```
 3. **Run the setup script**:
    ```bash
@@ -204,7 +204,7 @@ Place integration tests in `crates/<crate>/tests/`:
 
 ```rust
 // crates/algebra/tests/integration_tests.rs
-use tnss_algebra::*;
+use tensift_algebra::*;
 
 #[test]
 fn test_factorization_pipeline() {
@@ -252,7 +252,7 @@ criterion_main!(benches);
 /// # Examples
 ///
 /// ```
-/// use tnss_core::my_module;
+/// use tensift_core::my_module;
 /// let result = my_module::my_function(42);
 /// assert_eq!(result, 42);
 /// ```
@@ -265,7 +265,7 @@ pub fn my_function(input: i32) -> i32 {
 
 If you have questions about contributing, feel free to:
 
-1. Open a [discussion](https://github.com/tnss/tnss/discussions)
+1. Open a [discussion](https://github.com/tensift/tensift/discussions)
 2. Ask in an existing issue
 3. Reach out to maintainers
 

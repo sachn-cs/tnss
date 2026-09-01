@@ -5,7 +5,7 @@
     <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
     <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green" alt="License"></a>
     <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/tensor-network-schnorrs-sieving/ci.yml?branch=master" alt="CI"></a>
-    <a href="https://crates.io/crates/tnss"><img src="https://img.shields.io/crates/v/tnss" alt="crates.io"></a>
+    <a href="https://crates.io/crates/tensift"><img src="https://img.shields.io/crates/v/tensift" alt="crates.io"></a>
     <a href="https://github.com/sachncs/tensor-network-schnorrs-sieving/stargazers"><img src="https://img.shields.io/github/stars/sachncs/tensor-network-schnorrs-sieving" alt="Stars"></a>
   </p>
 </p>
@@ -19,7 +19,7 @@ Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,00
 ## Features
 
 - **7-stage pipeline** — Complete implementation from lattice construction to factor extraction
-- **Workspace architecture** — 5 crates with clear domain boundaries (`tnss-core`, `tnss-lattice`, `tnss-tensor`, `tnss-algebra`, `tnss-cli`)
+- **Workspace architecture** — 5 crates with clear domain boundaries (`tensift-core`, `tensift-lattice`, `tensift-tensor`, `tensift-algebra`, `tensift-cli`)
 - **Tensor-network sampling** — TTN variational optimization, OPES, and MPO spectral amplification
 - **Tested** — 149 unit tests, 4 Criterion benchmarks
 - **Zero `unsafe` code**, strict clippy compliance
@@ -30,7 +30,7 @@ Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,00
 ### From crates.io
 
 ```bash
-cargo install tnss-cli
+cargo install tensift-cli
 ```
 
 ### From source
@@ -53,21 +53,21 @@ cargo build --workspace --release
 
 ```bash
 # Factor a semiprime
-cargo run -p tnss-cli -- 91
-cargo run -p tnss-cli -- 8633
+cargo run -p tensift-cli -- 91
+cargo run -p tensift-cli -- 8633
 # [INFO] Factoring 8633...
 # [INFO] Found factors: 89 × 97
 
 # Run the bundled examples
-cargo run -p tnss-cli --example basic_factorization -- 91
-cargo run -p tnss-cli --example batch_factorization
+cargo run -p tensift-cli --example basic_factorization -- 91
+cargo run -p tensift-cli --example batch_factorization
 ```
 
 ### Rust API
 
 ```rust
-use tnss_algebra::factorize;
-use tnss_core::Semiprime;
+use tensift_algebra::factorize;
+use tensift_core::Semiprime;
 
 let n: u64 = 8633;
 let result = factorize(Semiprime::new(n))?;
@@ -87,13 +87,13 @@ No `.env` file is required for basic usage.
 
 | Stage | Crate | Description |
 |-------|-------|-------------|
-| 1 | `tnss-lattice` | Schnorr lattice construction |
-| 2 | `tnss-lattice` | LLL / segment LLL / BKZ basis reduction |
-| 3 | `tnss-lattice` | Babai rounding and Klein sampling |
-| 4 | `tnss-tensor` | TTN variational ansatz |
-| 5 | `tnss-tensor` | OPES, MPO amplification, fallback samplers |
-| 6 | `tnss-algebra` | Smoothness verification |
-| 7 | `tnss-algebra` | GF(2) linear algebra + GCD |
+| 1 | `tensift-lattice` | Schnorr lattice construction |
+| 2 | `tensift-lattice` | LLL / segment LLL / BKZ basis reduction |
+| 3 | `tensift-lattice` | Babai rounding and Klein sampling |
+| 4 | `tensift-tensor` | TTN variational ansatz |
+| 5 | `tensift-tensor` | OPES, MPO amplification, fallback samplers |
+| 6 | `tensift-algebra` | Smoothness verification |
+| 7 | `tensift-algebra` | GF(2) linear algebra + GCD |
 
 See [`docs/README.md`](docs/README.md) and [`docs/08-implementation-notes.md`](docs/08-implementation-notes.md) for the full documentation index and known simplifications/limitations.
 
@@ -101,24 +101,24 @@ See [`docs/README.md`](docs/README.md) and [`docs/08-implementation-notes.md`](d
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| `tnss_core::Semiprime` | struct | Semiprime wrapper with factor targets |
-| `tnss_algebra::factorize` | function | Run the full 7-stage pipeline |
-| `tnss_lattice::lll` / `bkz` / `babai` / `klein` | modules | Lattice reduction and CVP |
-| `tnss_tensor::ttn` / `mpo` / `opes` | modules | Tensor-network samplers |
-| `tnss_cli` | crate | `tnss-cli` binary |
+| `tensift_core::Semiprime` | struct | Semiprime wrapper with factor targets |
+| `tensift_algebra::factorize` | function | Run the full 7-stage pipeline |
+| `tensift_lattice::lll` / `bkz` / `babai` / `klein` | modules | Lattice reduction and CVP |
+| `tensift_tensor::ttn` / `mpo` / `opes` | modules | Tensor-network samplers |
+| `tensift_cli` | crate | `tensift-cli` binary |
 
 ## Crate Dependency Graph
 
 ```
-tnss-core (base)
+tensift-core (base)
     ↑
-tnss-lattice → tnss-core
+tensift-lattice → tensift-core
     ↑
-tnss-tensor → tnss-core, tnss-lattice
+tensift-tensor → tensift-core, tensift-lattice
     ↑
-tnss-algebra → tnss-core, tnss-lattice, tnss-tensor
+tensift-algebra → tensift-core, tensift-lattice, tensift-tensor
     ↑
-tnss-cli → all crates
+tensift-cli → all crates
 ```
 
 ## Documentation
@@ -136,7 +136,7 @@ tnss-cli → all crates
 ## Project Structure
 
 ```
-tnss/
+tensift/
 ├── crates/
 │   ├── core/         # Core types, errors, constants, utilities, primes
 │   ├── lattice/      # Lattice operations (LLL, segment LLL, BKZ, Babai, Klein)
@@ -169,7 +169,7 @@ just audit                                           # cargo-deny + cargo-audit
 
 ```bash
 cargo test --workspace --all-features        # all crates
-cargo test -p tnss-algebra --all-features    # one crate
+cargo test -p tensift-algebra --all-features    # one crate
 cargo bench --workspace                      # criterion benchmarks
 ```
 
@@ -178,7 +178,7 @@ cargo bench --workspace                      # criterion benchmarks
 ```bash
 cargo build --workspace --all-features --release
 # Artifacts:
-#   target/release/tnss-cli
+#   target/release/tensift-cli
 ```
 
 ## Release

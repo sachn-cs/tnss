@@ -393,7 +393,7 @@ SchnorrLattice::new
 ### CLI Usage
 
 ```bash
-cargo run -p tnss-cli -- 91
+cargo run -p tensift-cli -- 91
 ```
 
 The CLI binary in `crates/cli/src/main.rs`:

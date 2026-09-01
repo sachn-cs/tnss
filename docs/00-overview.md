@@ -6,12 +6,12 @@
 
 ## Table of Contents
 
-1. [What is TNSS?](#what-is-tnss)
+1. [What is TNSS?](#what-is-tensift)
 2. [The Problem It Solves](#the-problem-it-solves)
 3. [Algorithm Architecture](#algorithm-architecture)
 4. [The 7 Stages at a Glance](#the-7-stages-at-a-glance)
 5. [Key Techniques](#key-techniques)
-6. [When to Use TNSS](#when-to-use-tnss)
+6. [When to Use TNSS](#when-to-use-tensift)
 7. [Documentation Structure](#documentation-structure)
 
 ---
@@ -213,7 +213,7 @@ Smooth relation exponent vectors are assembled into a matrix over GF(2). The ker
 To factor a number using TNSS:
 
 ```rust
-use tnss_algebra::factor::{factorize, Config};
+use tensift_algebra::factor::{factorize, Config};
 use rug::Integer;
 
 let n = Integer::from(91u64);  // Semiprime to factor
@@ -226,7 +226,7 @@ println!("Factors: {} and {}", result.p, result.q);
 Or from the command line:
 
 ```bash
-cargo run -p tnss-cli -- 91
+cargo run -p tensift-cli -- 91
 ```
 
 See individual stage documentation for detailed explanations of each component.

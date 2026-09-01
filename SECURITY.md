@@ -46,7 +46,7 @@ When using TNSS in your project:
 This security policy applies to:
 
 - The TNSS Rust crates
-- The command-line interface (`tnss-cli`)
+- The command-line interface (`tensift-cli`)
 - Documentation and examples in this repository
 
 ## Out of Scope

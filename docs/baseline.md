@@ -19,20 +19,20 @@ Recorded before the principal-engineer refactor began. Toolchain:
 - `test_factorization` — 18/18 pass
 
 ## Benches (criterion, quick mode, single-threaded default)
-- tnss-core `first 1000 primes`: 11.4 us
-- tnss-lattice: lattice construction dim=12: ~5.3 us; LLL reduction dim=12: ~2.12 ms
-- tnss-tensor `sampler`: ~906 us
-- tnss-algebra: factor 91: ~191 us; factor 5183: ~908 us; factor 8633: (recorded in run)
+- tensift-core `first 1000 primes`: 11.4 us
+- tensift-lattice: lattice construction dim=12: ~5.3 us; LLL reduction dim=12: ~2.12 ms
+- tensift-tensor `sampler`: ~906 us
+- tensift-algebra: factor 91: ~191 us; factor 5183: ~908 us; factor 8633: (recorded in run)
 
 ## Size
 - Total source LOC (crates/*/src): 13,427
-  - tnss-core 938, tnss-lattice 4,056, tnss-tensor 5,310,
-    tnss-sampler 686, tnss-algebra 2,246, tnss-cli 191
+  - tensift-core 938, tensift-lattice 4,056, tensift-tensor 5,310,
+    tensift-sampler 686, tensift-algebra 2,246, tensift-cli 191
 - Public items per crate: core 32, lattice 49, tensor 98, sampler 8, algebra 33
 
 ## Known pre-existing defects found during baseline
 1. Workspace did not compile against pinned rand 0.10 (RngExt split,
    `choose_multiple`→`sample` rename, removed `rand::RngCore` re-export).
-2. `parallel_sample` in tnss-core was dead code that blocked compilation.
+2. `parallel_sample` in tensift-core was dead code that blocked compilation.
 3. One clippy `question_mark` violation in factor extraction.
 4. `batch_factorization` includes a 20-bit case beyond documented scope.

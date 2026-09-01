@@ -147,7 +147,7 @@ pub struct SchnorrLattice {
 
 ### Prime Generation
 
-Primes are generated via `tnss_core::primes::first_n_primes`, which uses a cached Sieve of Eratosthenes:
+Primes are generated via `tensift_core::primes::first_n_primes`, which uses a cached Sieve of Eratosthenes:
 - Results are cached in a `OnceLock` to avoid recomputation
 - Time: $O(n \log \log n)$ for the $n$-th prime
 

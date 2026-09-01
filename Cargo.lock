@@ -906,6 +906,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "tensift-algebra"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "lll-rs",
+ "log",
+ "ndarray",
+ "num-integer",
+ "num-traits",
+ "proptest",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
+ "rayon",
+ "rug",
+ "tensift-core",
+ "tensift-lattice",
+ "tensift-tensor",
+]
+
+[[package]]
+name = "tensift-cli"
+version = "0.1.1"
+dependencies = [
+ "clap",
+ "env_logger",
+ "log",
+ "rug",
+ "tensift-algebra",
+ "tensift-core",
+ "tensift-lattice",
+ "tensift-tensor",
+]
+
+[[package]]
+name = "tensift-core"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "thiserror",
+]
+
+[[package]]
+name = "tensift-lattice"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "lll-rs",
+ "log",
+ "ndarray",
+ "num-integer",
+ "num-traits",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
+ "rayon",
+ "rug",
+ "tensift-core",
+]
+
+[[package]]
+name = "tensift-tensor"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "log",
+ "ndarray",
+ "num-traits",
+ "proptest",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
+ "rayon",
+ "rug",
+ "tensift-core",
+]
+
+[[package]]
 name = "thiserror"
 version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -933,81 +1008,6 @@ checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "tnss-algebra"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "lll-rs",
- "log",
- "ndarray",
- "num-integer",
- "num-traits",
- "proptest",
- "rand 0.10.2",
- "rand_chacha 0.10.0",
- "rayon",
- "rug",
- "tnss-core",
- "tnss-lattice",
- "tnss-tensor",
-]
-
-[[package]]
-name = "tnss-cli"
-version = "0.1.1"
-dependencies = [
- "clap",
- "env_logger",
- "log",
- "rug",
- "tnss-algebra",
- "tnss-core",
- "tnss-lattice",
- "tnss-tensor",
-]
-
-[[package]]
-name = "tnss-core"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "thiserror",
-]
-
-[[package]]
-name = "tnss-lattice"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "lll-rs",
- "log",
- "ndarray",
- "num-integer",
- "num-traits",
- "rand 0.10.2",
- "rand_chacha 0.10.0",
- "rayon",
- "rug",
- "tnss-core",
-]
-
-[[package]]
-name = "tnss-tensor"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "log",
- "ndarray",
- "num-traits",
- "proptest",
- "rand 0.10.2",
- "rand_chacha 0.10.0",
- "rayon",
- "rug",
- "tnss-core",
 ]
 
 [[package]]

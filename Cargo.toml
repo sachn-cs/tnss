@@ -10,7 +10,7 @@ rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/sachncs/tensor-network-schnorrs-sieving"
 repository = "https://github.com/sachncs/tensor-network-schnorrs-sieving"
-documentation = "https://docs.rs/tnss"
+documentation = "https://docs.rs/tensift"
 keywords = ["cryptography", "factorization", "lattice", "tensor-network"]
 categories = ["cryptography", "algorithms", "mathematics", "science"]
 

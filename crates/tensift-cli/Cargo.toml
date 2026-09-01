@@ -1,0 +1,29 @@
+[package]
+name = "tensift-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Command-line interface for TNSS factorization"
+
+[[bin]]
+name = "tensift"
+path = "src/main.rs"
+
+[dependencies]
+tensift-core = { path = "../tensift-core" }
+tensift-lattice = { path = "../tensift-lattice" }
+tensift-tensor = { path = "../tensift-tensor" }
+tensift-algebra = { path = "../tensift-algebra" }
+clap = { workspace = true }
+rug = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+
+[dev-dependencies]

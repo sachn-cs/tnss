@@ -28,13 +28,13 @@ This documentation describes the **Tensor-Network Schnorr's Sieving (TNSS)** alg
 
 | Stage | Document | Crate | Description |
 |-------|----------|-------|-------------|
-| Stage 1 | [01-stage-1-lattice-construction.md](./01-stage-1-lattice-construction.md) | `tnss-lattice` | Schnorr lattice construction |
-| Stage 2 | [02-stage-2-basis-reduction.md](./02-stage-2-basis-reduction.md) | `tnss-lattice` | LLL, Segment LLL, BKZ, and pruning |
-| Stage 3 | [03-stage-3-cvp-baseline.md](./03-stage-3-cvp-baseline.md) | `tnss-lattice` | Babai rounding and Klein sampling |
-| Stage 4 | [04-stage-4-tensor-network.md](./04-stage-4-tensor-network.md) | `tnss-tensor` | Tree Tensor Network ansatz, BP gauging, adaptive topology |
-| Stage 5 | [05-stage-5-optimization-sampling.md](./05-stage-5-optimization-sampling.md) | `tnss-tensor` | OPES, MPO spectral amplification, and sampling |
-| Stage 6 | [06-stage-6-smoothness-verification.md](./06-stage-6-smoothness-verification.md) | `tnss-algebra` | Smoothness testing and sr-pair extraction |
-| Stage 7 | [07-stage-7-factor-extraction.md](./07-stage-7-factor-extraction.md) | `tnss-algebra` | GF(2) linear algebra and factor recovery |
+| Stage 1 | [01-stage-1-lattice-construction.md](./01-stage-1-lattice-construction.md) | `tensift-lattice` | Schnorr lattice construction |
+| Stage 2 | [02-stage-2-basis-reduction.md](./02-stage-2-basis-reduction.md) | `tensift-lattice` | LLL, Segment LLL, BKZ, and pruning |
+| Stage 3 | [03-stage-3-cvp-baseline.md](./03-stage-3-cvp-baseline.md) | `tensift-lattice` | Babai rounding and Klein sampling |
+| Stage 4 | [04-stage-4-tensor-network.md](./04-stage-4-tensor-network.md) | `tensift-tensor` | Tree Tensor Network ansatz, BP gauging, adaptive topology |
+| Stage 5 | [05-stage-5-optimization-sampling.md](./05-stage-5-optimization-sampling.md) | `tensift-tensor` | OPES, MPO spectral amplification, and sampling |
+| Stage 6 | [06-stage-6-smoothness-verification.md](./06-stage-6-smoothness-verification.md) | `tensift-algebra` | Smoothness testing and sr-pair extraction |
+| Stage 7 | [07-stage-7-factor-extraction.md](./07-stage-7-factor-extraction.md) | `tensift-algebra` | GF(2) linear algebra and factor recovery |
 
 ### Implementation Reference
 
