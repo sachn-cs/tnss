@@ -596,7 +596,8 @@ fn build_and_reduce_lattice<R: Rng>(
                 num_samples: cfg.klein_num_samples,
                 sigma_scale: 1.0,
             };
-            let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config, rng);
+            let klein_result =
+                klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config, rng);
             tnss_lattice::babai::BabaiResult {
                 closest_lattice_point: klein_result.closest_lattice_point,
                 coefficients: klein_result.coefficients,
