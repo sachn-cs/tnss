@@ -389,7 +389,11 @@ impl OpesSampler {
         n_vars: usize,
         rng: &mut R,
     ) -> f64 {
-        let num_samples = 100.min(1 << n_vars);
+        let num_samples = if n_vars < usize::BITS as usize {
+            100.min(1_usize << n_vars)
+        } else {
+            100
+        };
         let mut total = 0.0;
 
         for _ in 0..num_samples {
