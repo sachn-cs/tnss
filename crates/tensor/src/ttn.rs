@@ -692,14 +692,18 @@ impl TreeTensorNetwork {
     }
 
     /// Compute probabilities for all configurations in parallel.
-    pub fn probabilities_parallel(&self, config: &SliceConfig) -> Vec<(Vec<bool>, f64)> {
+    pub fn probabilities_parallel<R: Rng>(
+        &self,
+        config: &SliceConfig,
+        rng: &mut R,
+    ) -> Vec<(Vec<bool>, f64)> {
         use rayon::prelude::*;
 
         let n_qubits = self.n_qubits;
 
         if n_qubits > 20 {
             // For large systems, sample rather than enumerate
-            return self.probabilities_sampled(10000);
+            return self.probabilities_sampled(10000, rng);
         }
 
         let ranges = partition_config_space(n_qubits, config.num_slices);
@@ -736,10 +740,13 @@ impl TreeTensorNetwork {
     }
 
     /// Sample probabilities using Monte Carlo.
-    fn probabilities_sampled(&self, num_samples: usize) -> Vec<(Vec<bool>, f64)> {
+    fn probabilities_sampled<R: Rng>(
+        &self,
+        num_samples: usize,
+        rng: &mut R,
+    ) -> Vec<(Vec<bool>, f64)> {
         use rand::RngExt;
 
-        let mut rng = rand::rng();
         let mut results = Vec::with_capacity(num_samples);
         let mut seen = std::collections::HashSet::new();
 
@@ -1710,7 +1717,7 @@ mod tests {
         let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng).unwrap();
 
         let slice_config = SliceConfig::for_tnss(3);
-        let probs = ttn.probabilities_parallel(&slice_config);
+        let probs = ttn.probabilities_parallel(&slice_config, &mut rng);
 
         // 2^3 = 8 configurations
         assert_eq!(probs.len(), 8);
