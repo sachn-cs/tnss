@@ -104,7 +104,8 @@ fn run() -> Result<(), String> {
         cfg.enable_index_slicing,
         cfg.effective_slices()
     );
-    info!("  BKZ reduction: {}", cfg.use_bkz);
+    info!("  Basis reduction: {:?}", cfg.reduce_mode);
+    info!("  CVP solver: {:?}", cfg.cvp_solver);
     info!("  SVD threshold: {}", cfg.svd_threshold);
 
     info!("\nStarting factorization...\n");

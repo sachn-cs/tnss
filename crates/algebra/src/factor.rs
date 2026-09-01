@@ -89,6 +89,29 @@ pub struct PipelineStats {
     pub num_slices: usize,
 }
 
+/// Lattice reduction strategy applied to the sieving basis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReductionMode {
+    /// LLL reduction only (fast, adequate for small semiprimes).
+    Lll,
+    /// BKZ reduction with the configured `bkz_blocksize`.
+    Bkz {
+        /// Use the progressive BKZ scheduling strategy.
+        progressive: bool,
+    },
+}
+
+/// CVP solver strategy for the sieving phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CvpSolver {
+    /// Deterministic Babai nearest-plane rounding.
+    Deterministic,
+    /// Klein randomized sampling (better quality, slower).
+    Klein,
+    /// Deterministic first, then Klein sampling, keeping the best result.
+    Hybrid,
+}
+
 /// Hyperparameters for the TNSS algorithm.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -133,22 +156,18 @@ pub struct Config {
     pub svd_threshold: f64,
 
     // -- CVP solver parameters --
-    /// Use Klein sampling instead of deterministic Babai rounding.
-    pub use_klein_sampling: bool,
-    /// Use hybrid CVP solver (deterministic + Klein sampling, keeps best).
-    pub use_hybrid_cvp: bool,
+    /// CVP solver strategy.
+    pub cvp_solver: CvpSolver,
     /// Number of Klein samples to generate (higher = better quality, slower).
     pub klein_num_samples: usize,
     /// Klein sampling width parameter eta.
     pub klein_eta: f64,
 
     // -- BKZ parameters --
-    /// Use BKZ reduction instead of LLL (better quality, slower).
-    pub use_bkz: bool,
+    /// Lattice reduction strategy (LLL or BKZ).
+    pub reduce_mode: ReductionMode,
     /// BKZ blocksize (larger = better quality but exponentially slower).
     pub bkz_blocksize: usize,
-    /// Use progressive BKZ strategy.
-    pub bkz_progressive: bool,
 
     // -- Convergence / termination --
     /// Enable early termination on convergence.
@@ -211,13 +230,11 @@ impl Config {
             ttn_bond_dim: 4,
             transverse_field_alpha: 0.1,
             use_ttn_sampler: true,
-            use_klein_sampling: false,
-            use_hybrid_cvp: false,
+            cvp_solver: CvpSolver::Deterministic,
             klein_num_samples: 10,
             klein_eta: 0.4,
-            use_bkz: false,
+            reduce_mode: ReductionMode::Lll,
             bkz_blocksize: 20,
-            bkz_progressive: true,
             enable_adaptive_bonds: true,
             adaptive_pid_params: PidParams::for_tnss(32),
             enable_index_slicing: true,
@@ -238,7 +255,7 @@ impl Config {
         cfg.enable_adaptive_bonds = false;
         cfg.gamma = 30;
         cfg.max_cvp = 100;
-        cfg.use_klein_sampling = true;
+        cfg.cvp_solver = CvpSolver::Klein;
         cfg.klein_num_samples = 10;
         cfg
     }
@@ -251,9 +268,9 @@ impl Config {
         cfg.adaptive_pid_params = PidParams::for_tnss(64);
         cfg.gamma = 100;
         cfg.max_cvp = 1000;
-        cfg.use_bkz = true;
+        cfg.reduce_mode = ReductionMode::Bkz { progressive: true };
         cfg.bkz_blocksize = 30;
-        cfg.use_hybrid_cvp = true;
+        cfg.cvp_solver = CvpSolver::Hybrid;
         cfg.klein_num_samples = 20;
         cfg
     }
@@ -265,6 +282,31 @@ impl Config {
         } else {
             self.num_slices
         }
+    }
+
+    /// Validate that the hyperparameters are usable.
+    pub fn validate(&self) -> Result<()> {
+        let positive = [
+            ("lattice dimension n", self.n),
+            ("smoothness basis size pi_2", self.pi_2),
+            ("max_cvp", self.max_cvp),
+            ("gamma", self.gamma),
+            ("combination_trials", self.combination_trials),
+            ("ttn_bond_dim", self.ttn_bond_dim),
+            ("klein_num_samples", self.klein_num_samples),
+            ("bkz_blocksize", self.bkz_blocksize),
+        ];
+        for (name, value) in positive {
+            if value == 0 {
+                return Err(Error::InvalidParameter(format!("{name} must be positive")));
+            }
+        }
+        if !self.svd_threshold.is_finite() || self.svd_threshold <= 0.0 {
+            return Err(Error::InvalidParameter(
+                "svd_threshold must be a positive finite value".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Create slice configuration from this config.
@@ -333,6 +375,7 @@ pub struct FactorResult {
 /// relations are found after exhausting all CVP instances.
 pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
     let start_time = Instant::now();
+    cfg.validate()?;
 
     // Fast path: perfect squares
     let sqrt_int = Integer::from(n.sqrt_ref());
@@ -483,9 +526,9 @@ fn build_and_reduce_lattice<R: Rng>(
     stats.lattice_time_ms += lattice_start.elapsed().as_secs_f64() * 1000.0;
 
     let reduction_start = Instant::now();
-    if cfg.use_bkz {
+    if let ReductionMode::Bkz { progressive } = cfg.reduce_mode {
         debug!("Using BKZ-{} reduction", cfg.bkz_blocksize);
-        if cfg.bkz_progressive {
+        if progressive {
             let _stats = progressive_bkz_reduce(&mut lattice.basis, cfg.bkz_blocksize);
         } else {
             let bkz_config = BKZConfig {
@@ -533,33 +576,37 @@ fn build_and_reduce_lattice<R: Rng>(
             .collect::<Vec<f64>>()
     };
 
-    let babai = if cfg.use_hybrid_cvp {
-        debug!("Using hybrid CVP solver (deterministic + Klein sampling)");
-        let mut hybrid_result = hybrid_cvp_solver(&lattice.target, &gso, &lattice.basis);
-        if hybrid_result.fractional_projections.is_empty() {
-            hybrid_result.fractional_projections =
-                compute_fractional_projections(&lattice.target, &gso);
+    let babai = match cfg.cvp_solver {
+        CvpSolver::Hybrid => {
+            debug!("Using hybrid CVP solver (deterministic + Klein sampling)");
+            let mut hybrid_result = hybrid_cvp_solver(&lattice.target, &gso, &lattice.basis);
+            if hybrid_result.fractional_projections.is_empty() {
+                hybrid_result.fractional_projections =
+                    compute_fractional_projections(&lattice.target, &gso);
+            }
+            hybrid_result
         }
-        hybrid_result
-    } else if cfg.use_klein_sampling {
-        debug!(
-            "Using Klein sampling: {} samples, eta={}",
-            cfg.klein_num_samples, cfg.klein_eta
-        );
-        let klein_config = KleinConfig {
-            eta: cfg.klein_eta,
-            num_samples: cfg.klein_num_samples,
-            sigma_scale: 1.0,
-        };
-        let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config);
-        tnss_lattice::babai::BabaiResult {
-            closest_lattice_point: klein_result.closest_lattice_point,
-            coefficients: klein_result.coefficients,
-            fractional_projections: compute_fractional_projections(&lattice.target, &gso),
+        CvpSolver::Klein => {
+            debug!(
+                "Using Klein sampling: {} samples, eta={}",
+                cfg.klein_num_samples, cfg.klein_eta
+            );
+            let klein_config = KleinConfig {
+                eta: cfg.klein_eta,
+                num_samples: cfg.klein_num_samples,
+                sigma_scale: 1.0,
+            };
+            let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config);
+            tnss_lattice::babai::BabaiResult {
+                closest_lattice_point: klein_result.closest_lattice_point,
+                coefficients: klein_result.coefficients,
+                fractional_projections: compute_fractional_projections(&lattice.target, &gso),
+            }
         }
-    } else {
-        debug!("Using Babai rounding (deterministic)");
-        babai_rounding(&lattice.target, &gso, &lattice.basis)
+        CvpSolver::Deterministic => {
+            debug!("Using Babai rounding (deterministic)");
+            babai_rounding(&lattice.target, &gso, &lattice.basis)
+        }
     };
 
     let basis_reps = extract_basis_representations(&lattice.basis, lattice.dimension + 1)?;
@@ -1105,7 +1152,9 @@ mod tests {
     fn test_large_semiprime_config() {
         let cfg = Config::large_semiprime();
         assert!(cfg.enable_adaptive_bonds);
-        assert!(cfg.use_bkz);
+        assert_eq!(cfg.reduce_mode, ReductionMode::Bkz { progressive: true });
+        assert_eq!(cfg.bkz_blocksize, 30);
+        assert_eq!(cfg.cvp_solver, CvpSolver::Hybrid);
     }
 
     #[test]
