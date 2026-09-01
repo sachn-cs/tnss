@@ -564,11 +564,12 @@ pub fn babai_nearest_plane(
 /// # Panics
 ///
 /// Panics if the target or basis is empty, or if their dimensions mismatch.
-pub fn klein_sampling(
+pub fn klein_sampling<R: Rng>(
     target: &[i64],
     gso: &GsoData,
     basis: &Matrix<BigVector>,
     config: &KleinConfig,
+    rng: &mut R,
 ) -> KleinSamplingResult {
     let num_vectors = gso.dimension();
     let target_dim = target.len();
@@ -587,7 +588,7 @@ pub fn klein_sampling(
     let mut all_samples: Vec<(Vec<i64>, f64)> = Vec::with_capacity(config.num_samples);
 
     for _sample_idx in 0..config.num_samples {
-        let result = klein_single_sample(target, gso, basis, config);
+        let result = klein_single_sample(target, gso, basis, config, rng);
         let distance_sq = compute_distance_sq(target, &result, basis, target_dim);
 
         all_samples.push((result.clone(), distance_sq));
@@ -634,11 +635,12 @@ pub fn klein_sampling(
 }
 
 /// Generate a single Klein sample.
-fn klein_single_sample(
+fn klein_single_sample<R: Rng>(
     target: &[i64],
     gso: &GsoData,
     basis: &Matrix<BigVector>,
     config: &KleinConfig,
+    rng: &mut R,
 ) -> Vec<i64> {
     let num_vectors = gso.dimension();
     let target_dim = target.len();
@@ -646,7 +648,6 @@ fn klein_single_sample(
     // Convert target to f64 for computation
     let mut current_target: Vec<f64> = target.iter().map(|&x| x as f64).collect();
     let mut coefficients: Vec<i64> = vec![0; num_vectors];
-    let mut rng = rand::rng();
 
     // Process from last to first (n-1 down to 0), like nearest plane
     for i in (0..num_vectors).rev() {
@@ -668,7 +669,7 @@ fn klein_single_sample(
         // NOTE: The sampler may fall back to deterministic rounding after a
         // bounded number of rejection attempts, slightly altering the target
         // distribution in extreme cases.
-        let sample = sample_discrete_gaussian(&mut rng, mu, sigma);
+        let sample = sample_discrete_gaussian(rng, mu, sigma);
         coefficients[i] = sample;
 
         // Update current_target: t ← t - c_i · b_i
@@ -803,14 +804,19 @@ fn reconstruct_lattice_point(
 ///
 /// This provides the reliability of deterministic methods with the improved
 /// approximation quality of randomized decoding.
-pub fn hybrid_cvp_solver(target: &[i64], gso: &GsoData, basis: &Matrix<BigVector>) -> BabaiResult {
+pub fn hybrid_cvp_solver<R: Rng>(
+    target: &[i64],
+    gso: &GsoData,
+    basis: &Matrix<BigVector>,
+    rng: &mut R,
+) -> BabaiResult {
     // First try deterministic nearest plane (fast, reliable)
     let det_result = babai_nearest_plane(target, gso, basis);
     let det_dist_sq = compute_distance_sq(target, &det_result.coefficients, basis, target.len());
 
     // Then try Klein sampling
     let config = KleinConfig::for_dimension(gso.dimension());
-    let klein_result = klein_sampling(target, gso, basis, &config);
+    let klein_result = klein_sampling(target, gso, basis, &config, rng);
 
     // Return the better result, preferring a finite distance over NaN
     let klein_finite = klein_result.squared_distance.is_finite();
@@ -914,7 +920,13 @@ pub fn verify_babai_result(result: &BabaiResult, basis: &Matrix<BigVector>) -> b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
     use tnss_core::consts::EPSILON;
+
+    fn test_rng() -> ChaCha8Rng {
+        ChaCha8Rng::seed_from_u64(42)
+    }
 
     fn identity_basis_2d() -> Matrix<BigVector> {
         let mut basis = Matrix::init(2, 2);
@@ -1007,7 +1019,7 @@ mod tests {
         let target = vec![3_i64, 4_i64];
 
         let config = KleinConfig::default().with_samples(5);
-        let result = klein_sampling(&target, &gso, &basis, &config);
+        let result = klein_sampling(&target, &gso, &basis, &config, &mut test_rng());
 
         assert_eq!(result.num_samples, 5);
         assert!(result.squared_distance >= 0.0);
@@ -1024,7 +1036,7 @@ mod tests {
         let target = vec![15_i64, 15_i64];
 
         let config = KleinConfig::default().with_samples(20);
-        let klein_result = klein_sampling(&target, &gso, &basis, &config);
+        let klein_result = klein_sampling(&target, &gso, &basis, &config, &mut test_rng());
 
         // Verify the result is a valid lattice point
         let reconstructed = reconstruct_lattice_point(&klein_result.coefficients, &basis, 2);
@@ -1054,7 +1066,7 @@ mod tests {
 
     #[test]
     fn test_discrete_gaussian_sampling() {
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         let center = 5.0;
         let sigma = 2.0;
 
@@ -1086,7 +1098,7 @@ mod tests {
         let gso = compute_gram_schmidt(&basis);
         let target = vec![10_i64, 10_i64];
 
-        let result = hybrid_cvp_solver(&target, &gso, &basis);
+        let result = hybrid_cvp_solver(&target, &gso, &basis, &mut test_rng());
 
         // Should return a valid lattice point
         assert!(verify_babai_result(&result, &basis));

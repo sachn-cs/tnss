@@ -579,7 +579,7 @@ fn build_and_reduce_lattice<R: Rng>(
     let babai = match cfg.cvp_solver {
         CvpSolver::Hybrid => {
             debug!("Using hybrid CVP solver (deterministic + Klein sampling)");
-            let mut hybrid_result = hybrid_cvp_solver(&lattice.target, &gso, &lattice.basis);
+            let mut hybrid_result = hybrid_cvp_solver(&lattice.target, &gso, &lattice.basis, rng);
             if hybrid_result.fractional_projections.is_empty() {
                 hybrid_result.fractional_projections =
                     compute_fractional_projections(&lattice.target, &gso);
@@ -596,7 +596,7 @@ fn build_and_reduce_lattice<R: Rng>(
                 num_samples: cfg.klein_num_samples,
                 sigma_scale: 1.0,
             };
-            let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config);
+            let klein_result = klein_sampling(&lattice.target, &gso, &lattice.basis, &klein_config, rng);
             tnss_lattice::babai::BabaiResult {
                 closest_lattice_point: klein_result.closest_lattice_point,
                 coefficients: klein_result.coefficients,
