@@ -138,11 +138,11 @@ tensift-cli → all crates
 ```
 tensift/
 ├── crates/
-│   ├── core/         # Core types, errors, constants, utilities, primes
-│   ├── lattice/      # Lattice operations (LLL, segment LLL, BKZ, Babai, Klein)
-│   ├── tensor/       # Tensor networks (TTN, MPO, Hamiltonian, OPES)
-│   ├── algebra/      # Number theory, smoothness, GF(2) solver, factorization
-│   └── cli/          # Command-line binary and examples
+│   ├── tensift-core/      # Core types, errors, constants, utilities, primes
+│   ├── tensift-lattice/   # Lattice operations (LLL, segment LLL, BKZ, Babai, Klein)
+│   ├── tensift-tensor/    # Tensor networks (TTN, MPO, Hamiltonian, OPES)
+│   ├── tensift-algebra/   # Number theory, smoothness, GF(2) solver, factorization
+│   └── tensift-cli/       # Command-line binary and examples
 ├── docs/             # Stage-by-stage documentation
 ├── Cargo.toml        # Workspace manifest
 ├── justfile          # Task runner

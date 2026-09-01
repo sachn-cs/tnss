@@ -67,8 +67,10 @@ pub struct Config {
     pub enable_index_slicing: bool,
     /// Number of parallel slices (0 = auto = num_cpus).
     pub num_slices: usize,
-    /// Minimum configurations per slice.
-    pub min_configs_per_slice: usize,
+    /// Minimum candidate budget multiplier: the sampler evaluates at least
+    /// `num_slices × min_configs_multiplier` candidate configurations, so the
+    /// total budget scales with parallelism.
+    pub min_configs_multiplier: usize,
     /// SVD threshold for tensor compression.
     pub svd_threshold: f64,
 
@@ -156,7 +158,7 @@ impl Config {
             adaptive_pid_params: PidParams::for_tnss(32),
             enable_index_slicing: true,
             num_slices: num_cpus,
-            min_configs_per_slice: 16,
+            min_configs_multiplier: 16,
             svd_threshold: DEFAULT_SVD_THRESHOLD,
             enable_early_termination: true,
             convergence_threshold: 1e-6,
@@ -229,7 +231,7 @@ impl Config {
     pub fn slice_config(&self) -> SliceConfig {
         SliceConfig {
             num_slices: self.effective_slices(),
-            min_configs_per_slice: self.min_configs_per_slice,
+            min_configs_per_slice: self.min_configs_multiplier,
             seed: self.seed,
         }
     }

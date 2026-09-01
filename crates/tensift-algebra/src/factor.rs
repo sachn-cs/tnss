@@ -541,8 +541,11 @@ fn sample_with_index_slicing<R: Rng>(
 ) -> Vec<(Vec<bool>, f64)> {
     let n_vars = hamiltonian.n_vars();
 
-    // Generate candidate configurations
-    let num_candidates = cfg.gamma * 4;
+    // Generate candidate configurations. The budget is at least
+    // `min_configs_multiplier × num_slices`, so the per-slice workload does
+    // not shrink to trivial size as parallelism grows.
+    let min_candidates = cfg.min_configs_multiplier * cfg.effective_slices();
+    let num_candidates = (cfg.gamma * 4).max(min_candidates);
     let mut candidates: Vec<Vec<bool>> = Vec::with_capacity(num_candidates);
 
     for _ in 0..num_candidates {
