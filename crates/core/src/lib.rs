@@ -42,23 +42,6 @@ pub enum Error {
 /// Result type alias for TNSS operations.
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Trait for types that can be used as lattice dimensions.
-///
-/// This trait exists for future extensibility (e.g., dimension types with
-/// runtime validation or typed units) even though the current implementation
-/// for `usize` is trivial.
-pub trait LatticeDimension {
-    /// Convert to usize for array indexing.
-    fn to_usize(self) -> usize;
-}
-
-impl LatticeDimension for usize {
-    #[inline]
-    fn to_usize(self) -> usize {
-        self
-    }
-}
-
 /// Mathematical constants used throughout.
 pub mod constants {
     /// Machine epsilon for f64 comparisons.
