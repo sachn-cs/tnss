@@ -5,6 +5,8 @@
 
 pub use tnss_core::{Error, Result, consts, primes, utils};
 
+pub mod config;
+pub mod extract;
 pub mod factor;
 pub mod gf2_solver;
 pub mod smoothness;
