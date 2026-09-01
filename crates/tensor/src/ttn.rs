@@ -49,7 +49,7 @@ use log::{debug, trace};
 use ndarray::{Array1, Array2, Array3};
 use rand::{Rng, RngExt};
 use std::collections::{HashMap, VecDeque};
-use tnss_core::index_slicing::{SliceConfig, partition_config_space};
+use tnss_core::index_slicing::SliceConfig;
 
 /// Convergence threshold for Belief Propagation.
 const BP_CONVERGENCE_EPS: f64 = 1e-10;
@@ -652,26 +652,15 @@ impl TreeTensorNetwork {
             })
             .collect();
 
-        // Parallel contraction over slices (reuses unified core logic)
-        let partial_results: Vec<(usize, Array2<f64>)> = if slice_config.use_work_stealing {
-            slices
-                .into_par_iter()
-                .map(|(start, end)| {
-                    let local_result =
-                        Self::contract_node_core(tensor, bd, left, right, start, end);
-                    (start, local_result)
-                })
-                .collect()
-        } else {
-            slices
-                .into_iter()
-                .map(|(start, end)| {
-                    let local_result =
-                        Self::contract_node_core(tensor, bd, left, right, start, end);
-                    (start, local_result)
-                })
-                .collect()
-        };
+        // Parallel contraction over slices (reuses unified core logic).
+        // rayon's scheduler steals chunks dynamically across worker threads.
+        let partial_results: Vec<(usize, Array2<f64>)> = slices
+            .into_par_iter()
+            .map(|(start, end)| {
+                let local_result = Self::contract_node_core(tensor, bd, left, right, start, end);
+                (start, local_result)
+            })
+            .collect();
 
         // Merge partial results
         let mut result = Array2::zeros([bd, 1]);
@@ -692,11 +681,7 @@ impl TreeTensorNetwork {
     }
 
     /// Compute probabilities for all configurations in parallel.
-    pub fn probabilities_parallel<R: Rng>(
-        &self,
-        config: &SliceConfig,
-        rng: &mut R,
-    ) -> Vec<(Vec<bool>, f64)> {
+    pub fn probabilities_parallel<R: Rng>(&self, rng: &mut R) -> Vec<(Vec<bool>, f64)> {
         use rayon::prelude::*;
 
         let n_qubits = self.n_qubits;
@@ -706,37 +691,29 @@ impl TreeTensorNetwork {
             return self.probabilities_sampled(10000, rng);
         }
 
-        let ranges = partition_config_space(n_qubits, config.num_slices);
+        // Dynamic work stealing: enumerate the config index space with
+        // rayon, whose scheduler steals chunks across worker threads, instead
+        // of pre-partitioning into fixed slices.
+        let total = 1_usize << n_qubits;
 
-        let results: Vec<Vec<(Vec<bool>, f64)>> = if config.use_work_stealing {
-            ranges
+        if total >= 4096 {
+            (0..total)
                 .into_par_iter()
-                .map(|(start, end)| {
-                    let mut slice_results = Vec::new();
-                    for idx in start..end {
-                        let bits = tnss_core::index_slicing::index_to_bits(idx, n_qubits);
-                        let prob = self.probability(&bits);
-                        slice_results.push((bits, prob));
-                    }
-                    slice_results
+                .map(|idx| {
+                    let bits = tnss_core::index_slicing::index_to_bits(idx, n_qubits);
+                    let prob = self.probability(&bits);
+                    (bits, prob)
                 })
                 .collect()
         } else {
-            ranges
-                .into_iter()
-                .map(|(start, end)| {
-                    let mut slice_results = Vec::new();
-                    for idx in start..end {
-                        let bits = tnss_core::index_slicing::index_to_bits(idx, n_qubits);
-                        let prob = self.probability(&bits);
-                        slice_results.push((bits, prob));
-                    }
-                    slice_results
+            (0..total)
+                .map(|idx| {
+                    let bits = tnss_core::index_slicing::index_to_bits(idx, n_qubits);
+                    let prob = self.probability(&bits);
+                    (bits, prob)
                 })
                 .collect()
-        };
-
-        results.into_iter().flatten().collect()
+        }
     }
 
     /// Sample probabilities using Monte Carlo.
@@ -1716,8 +1693,7 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
         let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng).unwrap();
 
-        let slice_config = SliceConfig::for_tnss(3);
-        let probs = ttn.probabilities_parallel(&slice_config, &mut rng);
+        let probs = ttn.probabilities_parallel(&mut rng);
 
         // 2^3 = 8 configurations
         assert_eq!(probs.len(), 8);

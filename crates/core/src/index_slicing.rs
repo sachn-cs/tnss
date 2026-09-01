@@ -64,8 +64,6 @@ pub struct SliceConfig {
     pub min_configs_per_slice: usize,
     /// Number of parallel slices to use.
     pub num_slices: usize,
-    /// Whether to use work-stealing for load balancing.
-    pub use_work_stealing: bool,
     /// Seed for any random sampling of large configuration ranges.
     pub seed: u64,
 }
@@ -76,7 +74,6 @@ impl Default for SliceConfig {
         Self {
             num_slices: num_threads().max(1),
             min_configs_per_slice: 16,
-            use_work_stealing: true,
             seed: 0,
         }
     }
@@ -88,7 +85,6 @@ impl SliceConfig {
         Self {
             num_slices: num_threads().max(1),
             min_configs_per_slice: 8,
-            use_work_stealing: true,
             seed: 0,
         }
     }
@@ -100,7 +96,6 @@ impl SliceConfig {
         Self {
             num_slices: 4,
             min_configs_per_slice: configs_per_slice,
-            use_work_stealing: false,
             seed: 0,
         }
     }
@@ -114,7 +109,6 @@ impl SliceConfig {
         Self {
             num_slices,
             min_configs_per_slice: min_configs,
-            use_work_stealing: true,
             seed: 0,
         }
     }
@@ -611,7 +605,6 @@ mod tests {
         let config = SliceConfig {
             num_slices: 2,
             min_configs_per_slice: 1,
-            use_work_stealing: false, // Use sequential for test determinism.
             seed: 42,
         };
 

@@ -150,8 +150,6 @@ pub struct Config {
     pub num_slices: usize,
     /// Minimum configurations per slice.
     pub min_configs_per_slice: usize,
-    /// Use work stealing for load balancing.
-    pub use_work_stealing: bool,
     /// SVD threshold for tensor compression.
     pub svd_threshold: f64,
 
@@ -240,7 +238,6 @@ impl Config {
             enable_index_slicing: true,
             num_slices: num_cpus,
             min_configs_per_slice: 16,
-            use_work_stealing: true,
             svd_threshold: 1e-12,
             enable_early_termination: true,
             convergence_threshold: 1e-6,
@@ -314,7 +311,6 @@ impl Config {
         SliceConfig {
             num_slices: self.effective_slices(),
             min_configs_per_slice: self.min_configs_per_slice,
-            use_work_stealing: self.use_work_stealing,
             seed: self.seed,
         }
     }
@@ -805,28 +801,17 @@ fn sample_with_index_slicing<R: Rng>(
         candidates.push(bits);
     }
 
-    // Evaluate energies in parallel using index slicing
-    let results: Vec<(Vec<bool>, f64)> = if cfg.use_work_stealing {
-        candidates
-            .par_iter()
-            .map(|bits| {
-                let prob = ttn.probability(bits);
-                let energy = hamiltonian.energy(bits);
-                // Weight by TTN probability
-                (bits.clone(), energy - prob.ln())
-            })
-            .collect()
-    } else {
-        candidates
-            .iter()
-            .map(|bits| {
-                let prob = ttn.probability(bits);
-                let energy = hamiltonian.energy(bits);
-                // Weight by TTN probability
-                (bits.clone(), energy - prob.ln())
-            })
-            .collect()
-    };
+    // Evaluate energies in parallel (rayon's scheduler load-balances chunks
+    // dynamically, so no explicit work-stealing knob is needed)
+    let results: Vec<(Vec<bool>, f64)> = candidates
+        .par_iter()
+        .map(|bits| {
+            let prob = ttn.probability(bits);
+            let energy = hamiltonian.energy(bits);
+            // Weight by TTN probability
+            (bits.clone(), energy - prob.ln())
+        })
+        .collect();
 
     // Sort by energy, filtering out NaN, and return top gamma
     let mut sorted: Vec<(Vec<bool>, f64)> =
