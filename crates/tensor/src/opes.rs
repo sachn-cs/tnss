@@ -849,9 +849,7 @@ impl MatrixProductOperator {
         svd_threshold: f64,
     ) -> crate::Result<MatrixProductOperator> {
         if self.n_sites != other.n_sites {
-            return Err(crate::Error::InvalidState(
-                "MPOs must have same number of sites".to_string(),
-            ));
+            return Err("MPOs must have same number of sites".into());
         }
 
         let n_sites = self.n_sites;

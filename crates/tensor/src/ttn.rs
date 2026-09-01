@@ -469,25 +469,21 @@ impl TreeTensorNetwork {
             ));
         }
         if buffers.node_tensors.len() != self.nodes.len() {
-            return Err(crate::Error::InvalidState(
-                "buffer node_tensors length does not match node count".to_string(),
-            ));
+            return Err("buffer node_tensors length does not match node count".into());
         }
         // Validate each inner buffer can hold at least max_bond_dim elements
         let max_bond = self.bond_dim;
         for (i, buf) in buffers.node_tensors.iter().enumerate() {
             if buf.len() < max_bond {
-                return Err(crate::Error::InvalidState(
-                    "buffer node_tensors inner vec too small for node bond dimension".to_string(),
-                ));
+                return Err(
+                    "buffer node_tensors inner vec too small for node bond dimension".into(),
+                );
             }
             // Also validate tensor shapes for leaf nodes
             if self.nodes[i].is_leaf {
                 let shape = self.nodes[i].tensor.shape();
                 if shape.len() != 3 || shape[0] != 2 || shape[2] != 1 {
-                    return Err(crate::Error::InvalidState(
-                        "leaf tensor shape invalid".to_string(),
-                    ));
+                    return Err("leaf tensor shape invalid".into());
                 }
             }
         }
@@ -557,9 +553,7 @@ impl TreeTensorNetwork {
         buffers.node_ready.fill(false);
 
         if self.root_idx >= buffers.node_tensors.len() {
-            return Err(crate::Error::InvalidState(
-                "root index out of buffer bounds".to_string(),
-            ));
+            return Err("root index out of buffer bounds".into());
         }
         Ok(buffers.node_tensors[self.root_idx][0])
     }

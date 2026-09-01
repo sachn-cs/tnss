@@ -8,18 +8,11 @@ use thiserror::Error;
 /// Errors that can occur during the TNSS factorization pipeline.
 // Name kept as `Error` for ergonomic use with `tnss_core::Result`; the module
 // path (`tnss_core::Error`) provides sufficient disambiguation.
-#[non_exhaustive]
 #[derive(Debug, Error, Clone)]
 pub enum Error {
     /// Invalid parameter provided.
     #[error("invalid parameter: {0}")]
     InvalidParameter(String),
-    /// LLL reduction failed (e.g., singular matrix).
-    #[error("LLL reduction failed: {0}")]
-    LllReductionFailed(String),
-    /// Factor extraction failed.
-    #[error("factor extraction failed: {0}")]
-    FactorExtractionFailed(String),
     /// GF(2) solver encountered an error.
     #[error("GF(2) solver error: {0}")]
     Gf2Solver(String),
@@ -37,6 +30,18 @@ pub enum Error {
     /// Invalid state encountered (internal error).
     #[error("invalid state: {0}")]
     InvalidState(String),
+}
+
+impl From<String> for Error {
+    fn from(msg: String) -> Self {
+        Self::InvalidState(msg)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(msg: &str) -> Self {
+        Self::InvalidState(msg.to_owned())
+    }
 }
 
 /// Result type alias for TNSS operations.
