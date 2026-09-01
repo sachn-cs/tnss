@@ -1,5 +1,7 @@
 //! Integration tests for TNSS factorization pipeline.
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use rug::Integer;
 use tnss_algebra::factor::{self, Config};
 use tnss_algebra::gf2_solver;
@@ -93,7 +95,7 @@ fn test_lattice_construction() {
     let n = Integer::from(91_u64);
     let dim = 10_usize;
 
-    let lattice = lattice::SchnorrLattice::new(dim, &n, 2.0, &mut rand::rng());
+    let lattice = lattice::SchnorrLattice::new(dim, &n, 2.0, &mut ChaCha8Rng::seed_from_u64(42));
     assert!(lattice.verify_invariants());
 }
 
