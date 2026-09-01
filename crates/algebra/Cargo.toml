@@ -12,10 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 description = "Number theory and GF(2) linear algebra for TNSS"
 
-[features]
-default = ["parallel"]
-parallel = ["rayon", "ndarray/rayon"]
-
 [dependencies]
 tnss-core = { path = "../core" }
 # Direct dependencies (not dev-dependencies) because factor.rs constructs
@@ -34,7 +30,7 @@ num-integer = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 log = { workspace = true }
-rayon = { workspace = true, optional = true }
+rayon = { workspace = true }
 
 [[bench]]
 name = "factorization"

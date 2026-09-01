@@ -19,11 +19,7 @@ num-traits = { workspace = true }
 ndarray = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
-rayon = { workspace = true, optional = true }
-
-[features]
-default = ["parallel"]
-parallel = ["rayon", "ndarray/rayon"]
+rayon = { workspace = true }
 
 [[bench]]
 name = "primes"

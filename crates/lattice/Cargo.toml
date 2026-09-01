@@ -12,11 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 description = "Lattice reduction and CVP algorithms for TNSS"
 
-[features]
-# rayon is default-enabled via the "parallel" feature
-default = ["parallel"]
-parallel = ["rayon"]
-
 [dependencies]
 tnss-core = { path = "../core" }
 ndarray = { workspace = true }
@@ -26,7 +21,7 @@ num-integer = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 log = { workspace = true }
-rayon = { workspace = true, optional = true }
+rayon = { workspace = true }
 lll-rs = { workspace = true }
 
 [[bench]]

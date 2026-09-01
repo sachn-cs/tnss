@@ -12,10 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 description = "Tensor network operations and Hamiltonian optimization for TNSS"
 
-[features]
-default = ["parallel"]
-parallel = ["rayon", "ndarray/rayon"]
-
 [dependencies]
 tnss-core = { path = "../core" }
 rug = { workspace = true }
@@ -24,7 +20,7 @@ num-traits = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 log = { workspace = true }
-rayon = { workspace = true, optional = true }
+rayon = { workspace = true }
 
 [[bench]]
 name = "sampler"

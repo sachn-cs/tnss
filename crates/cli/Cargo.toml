@@ -16,10 +16,6 @@ description = "Command-line interface for TNSS factorization"
 name = "tnss"
 path = "src/main.rs"
 
-[features]
-default = ["parallel"]
-parallel = ["tnss-lattice/parallel", "tnss-tensor/parallel", "tnss-algebra/parallel"]
-
 [dependencies]
 tnss-core = { path = "../core" }
 tnss-lattice = { path = "../lattice" }
