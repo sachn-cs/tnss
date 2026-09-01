@@ -18,7 +18,7 @@
 //! single-spin-flip energy updates.
 
 use log::{debug, trace};
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 use crate::hamiltonian::CvpHamiltonian;
 

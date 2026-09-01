@@ -1,7 +1,8 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use rug::Integer;
+use std::hint::black_box;
 use tnss_tensor::classical_sampler::{ClassicalSamplerConfig, sample_low_energy};
 use tnss_tensor::hamiltonian::CvpHamiltonian;
 

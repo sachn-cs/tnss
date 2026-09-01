@@ -1,5 +1,6 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rug::Integer;
+use std::hint::black_box;
 use tnss_algebra::factor::{self, Config};
 
 fn bench_factor_small(c: &mut Criterion) {

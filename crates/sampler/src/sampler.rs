@@ -5,7 +5,7 @@
 //! instances. The samplers produce distinct bitstring configurations that correspond
 //! to improved lattice point approximations.
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::{BinaryHeap, HashSet};
 use tnss_core::consts::{ENERGY_SCALE, EPSILON, MAX_EXPONENT, MIN_TEMPERATURE};
 use tnss_tensor::hamiltonian::CvpHamiltonian;

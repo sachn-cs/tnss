@@ -458,7 +458,7 @@ fn sample_configs_in_range(
     let sample_count = num_samples.min(range_size);
 
     // Sample indices uniformly.
-    let indices: Vec<usize> = (start..end).choose_multiple(&mut rng, sample_count);
+    let indices: Vec<usize> = (start..end).sample(&mut rng, sample_count);
 
     indices
         .into_iter()
@@ -533,84 +533,6 @@ where
         .collect();
 
     results.into_iter().flatten().collect()
-}
-
-/// Execute embarrassingly parallel sampling.
-///
-/// Each slice independently samples from its portion of configuration space,
-/// then results are merged and deduplicated.
-///
-/// # Arguments
-///
-/// * `n_qubits` — Number of qubits.
-/// * `num_samples` — Total number of samples to collect.
-/// * `sample_fn` — Function that generates a sample given RNG state.
-/// * `config` — Slicing configuration.
-///
-/// # Returns
-///
-/// Vector of unique samples.
-pub fn parallel_sample<T, F>(
-    _n_qubits: usize,
-    num_samples: usize,
-    sample_fn: F,
-    config: &SliceConfig,
-) -> Vec<T>
-where
-    T: Send + Clone + PartialEq + Eq + std::hash::Hash,
-    F: Fn(&mut dyn rand::RngCore) -> Option<T> + Send + Sync,
-{
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
-    use std::collections::HashSet;
-
-    let num_slices = config.num_slices.max(1);
-    let samples_per_slice = (num_samples / num_slices).max(1);
-
-    // Use deterministic seeds for reproducibility.
-    let results: Vec<Vec<T>> = (0..num_slices)
-        .map(|slice_id| {
-            let mut rng = StdRng::seed_from_u64(12345_u64 + slice_id as u64);
-            let mut slice_samples = Vec::with_capacity(samples_per_slice);
-            let mut seen = HashSet::with_capacity(samples_per_slice);
-
-            for _ in 0..samples_per_slice * 10 {
-                // Try extra times for unique samples.
-                if slice_samples.len() >= samples_per_slice {
-                    break;
-                }
-
-                if let Some(sample) = sample_fn(&mut rng) {
-                    // Deduplicate within slice using HashSet for O(1) lookup.
-                    if seen.insert(sample.clone()) {
-                        slice_samples.push(sample);
-                    }
-                }
-            }
-
-            slice_samples
-        })
-        .collect();
-
-    // Merge samples and deduplicate across slices.
-    let mut all_samples = Vec::with_capacity(num_samples);
-    let mut seen = HashSet::with_capacity(num_samples);
-
-    for slice_samples in results {
-        for sample in slice_samples {
-            if seen.insert(sample.clone()) {
-                all_samples.push(sample);
-                if all_samples.len() >= num_samples {
-                    break;
-                }
-            }
-        }
-        if all_samples.len() >= num_samples {
-            break;
-        }
-    }
-
-    all_samples
 }
 
 #[cfg(test)]

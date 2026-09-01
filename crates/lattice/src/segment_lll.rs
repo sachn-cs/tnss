@@ -642,7 +642,7 @@ mod tests {
     }
 
     fn random_basis(n: usize, seed: u64) -> Matrix<BigVector> {
-        use rand::Rng;
+        use rand::RngExt;
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
 

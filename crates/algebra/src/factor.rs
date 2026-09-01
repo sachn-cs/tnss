@@ -38,7 +38,7 @@ use crate::{
     smoothness::{SmoothnessBasis, SrPair, try_build_sr_pair},
 };
 use log::{debug, info};
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rug::Integer;
 use rug::ops::Pow;
@@ -1056,10 +1056,7 @@ fn try_tau_vector(
     }
 
     // Compute S ≡ A · B^{-1} (mod N)
-    let b_inv = match b.invert_ref(n) {
-        Some(inv) => Integer::from(inv),
-        None => return None,
-    };
+    let b_inv = Integer::from(b.invert_ref(n)?);
     let s_mod_n = (&a * b_inv) % n;
 
     let sum = Integer::from(&s_mod_n + 1) % n;

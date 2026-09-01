@@ -44,7 +44,7 @@
 //! for extremely large values; debug assertions check for finite results.
 
 use log::trace;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rug::Integer;
 
 use tnss_core::consts::EPSILON;

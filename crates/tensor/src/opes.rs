@@ -53,7 +53,7 @@ use crate::hamiltonian::CvpHamiltonian;
 use crate::ttn::TreeTensorNetwork;
 use log::{debug, trace};
 use ndarray::{Array1, Array2, Array4};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::HashSet;
 use tnss_core::index_slicing::SliceConfig;
 

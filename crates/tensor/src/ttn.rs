@@ -47,7 +47,7 @@
 use crate::adaptive_bond::{AdaptiveBondManager, PidParams};
 use log::{debug, trace};
 use ndarray::{Array1, Array2, Array3};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::{HashMap, VecDeque};
 use tnss_core::index_slicing::{SliceConfig, partition_config_space};
 
@@ -743,7 +743,7 @@ impl TreeTensorNetwork {
 
     /// Sample probabilities using Monte Carlo.
     fn probabilities_sampled(&self, num_samples: usize) -> Vec<(Vec<bool>, f64)> {
-        use rand::Rng;
+        use rand::RngExt;
 
         let mut rng = rand::rng();
         let mut results = Vec::with_capacity(num_samples);
