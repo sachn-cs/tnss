@@ -86,10 +86,8 @@ pub fn index_to_bits(idx: usize, n_bits: usize) -> Vec<bool> {
 pub fn bits_to_index(bits: &[bool]) -> usize {
     let mut idx = 0_usize;
     for (i, &bit) in bits.iter().enumerate() {
-        if bit {
-            if let Some(shifted) = 1_usize.checked_shl(i as u32) {
-                idx |= shifted;
-            }
+        if bit && let Some(shifted) = 1_usize.checked_shl(i as u32) {
+            idx |= shifted;
         }
     }
     idx

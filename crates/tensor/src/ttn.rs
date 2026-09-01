@@ -623,13 +623,16 @@ impl TreeTensorNetwork {
             .collect();
 
         // Then update using manager (mutable borrow)
-        if let Some(ref mut manager) = self.adaptive_manager {
-            if let Ok(new_bonds) = manager.update(&entropies) {
-                // Apply new bond dimensions
-                for (i, new_dim) in new_bonds.iter().enumerate() {
-                    if i < self.bonds.len() {
-                        self.resize_bond(i, *new_dim);
-                    }
+        let new_bonds = if let Some(ref mut manager) = self.adaptive_manager {
+            manager.update(&entropies).ok()
+        } else {
+            None
+        };
+        if let Some(new_bonds) = new_bonds {
+            // Apply new bond dimensions
+            for (i, new_dim) in new_bonds.iter().enumerate() {
+                if i < self.bonds.len() {
+                    self.resize_bond(i, *new_dim);
                 }
             }
         }

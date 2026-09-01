@@ -237,23 +237,23 @@ pub fn factorize(n: &Integer, cfg: &Config) -> Result<FactorResult> {
         );
 
         // Stage 5: Attempt factor extraction when enough relations collected
-        if sr_pairs.len() >= needed_relations {
-            if let Some((p, q)) = attempt_factor_extraction(
+        if sr_pairs.len() >= needed_relations
+            && let Some((p, q)) = attempt_factor_extraction(
                 n,
                 &sr_pairs,
                 cfg,
                 &basis,
                 &mut stats,
                 start_time.elapsed().as_secs_f64(),
-            ) {
-                return Ok(FactorResult {
-                    p,
-                    q,
-                    relations_found: sr_pairs.len(),
-                    cvp_tried: cvp_count,
-                    stats,
-                });
-            }
+            )
+        {
+            return Ok(FactorResult {
+                p,
+                q,
+                relations_found: sr_pairs.len(),
+                cvp_tried: cvp_count,
+                stats,
+            });
         }
     }
 

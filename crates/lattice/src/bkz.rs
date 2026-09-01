@@ -278,17 +278,18 @@ fn bkz_single_tour(
             continue;
         }
 
-        if let Some(short_vec) = if config.enable_pruning {
+        let short_vec = if config.enable_pruning {
             enumerate_with_advanced_pruning(gso, k, block_end, pruning_config)
         } else {
             enumerate_short_vector(basis, gso, k, block_end, config)
-        } {
-            if should_insert(basis, &short_vec, k, config.delta) {
-                insert_vector(basis, short_vec, k);
-                stats.successful_insertions += 1;
-                improved = true;
-                *gso = compute_gram_schmidt(basis);
-            }
+        };
+        if let Some(short_vec) = short_vec
+            && should_insert(basis, &short_vec, k, config.delta)
+        {
+            insert_vector(basis, short_vec, k);
+            stats.successful_insertions += 1;
+            improved = true;
+            *gso = compute_gram_schmidt(basis);
         }
     }
 
