@@ -621,59 +621,6 @@ impl TreeTensorNetwork {
         Self::contract_node_core(&node.tensor, bd, left, right, 0, bd)
     }
 
-    /// Parallel contract an internal node using index slicing.
-    ///
-    /// This method slices the bond dimension for parallel contraction,
-    /// achieving O(χ³/p) work per thread with p parallel slices.
-    pub fn contract_node_parallel(
-        &self,
-        node_idx: usize,
-        left: &Array2<f64>,
-        right: &Array2<f64>,
-        slice_config: &tnss_core::index_slicing::SliceConfig,
-    ) -> Array2<f64> {
-        use rayon::prelude::*;
-
-        let node = &self.nodes[node_idx];
-        let tensor = &node.tensor;
-        let bd = node.bond_dim;
-
-        // Slice the parent bond dimension for parallel work distribution
-        let num_slices = slice_config.num_slices.min(bd).max(1);
-        let base_size = bd / num_slices;
-        let remainder = bd % num_slices;
-
-        // Create slices
-        let slices: Vec<(usize, usize)> = (0..num_slices)
-            .map(|i| {
-                let start = i * base_size + i.min(remainder);
-                let size = base_size + if i < remainder { 1 } else { 0 };
-                (start, start + size)
-            })
-            .collect();
-
-        // Parallel contraction over slices (reuses unified core logic).
-        // rayon's scheduler steals chunks dynamically across worker threads.
-        let partial_results: Vec<(usize, Array2<f64>)> = slices
-            .into_par_iter()
-            .map(|(start, end)| {
-                let local_result = Self::contract_node_core(tensor, bd, left, right, start, end);
-                (start, local_result)
-            })
-            .collect();
-
-        // Merge partial results
-        let mut result = Array2::zeros([bd, 1]);
-        for (start, partial) in partial_results {
-            let slice_len = partial.shape()[0];
-            for i in 0..slice_len {
-                result[[start + i, 0]] = partial[[i, 0]];
-            }
-        }
-
-        result
-    }
-
     /// Compute probability of a configuration (|amplitude|²).
     pub fn probability(&self, bits: &[bool]) -> f64 {
         let amp = self.amplitude(bits);
@@ -1702,32 +1649,6 @@ mod tests {
         for (_, prob) in &probs {
             assert!(*prob >= 0.0);
         }
-    }
-
-    #[test]
-    fn test_contract_node_parallel() {
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let ttn = TreeTensorNetwork::new_random(3, 2, &mut rng).unwrap();
-
-        // Find an internal node
-        let internal_node = ttn
-            .nodes
-            .iter()
-            .enumerate()
-            .find(|(_, n)| !n.is_leaf)
-            .map(|(i, _)| i)
-            .expect("Should have internal nodes");
-
-        // Create dummy left and right contractions
-        let left = ndarray::Array2::ones([2, 1]);
-        let right = ndarray::Array2::ones([2, 1]);
-
-        let slice_config = SliceConfig::for_tnss(3);
-        let result = ttn.contract_node_parallel(internal_node, &left, &right, &slice_config);
-
-        // Result should have shape [bond_dim, 1]
-        assert_eq!(result.shape(), [2, 1]);
-        assert!(result.iter().all(|v| v.is_finite()));
     }
 
     #[test]
