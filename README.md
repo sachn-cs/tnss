@@ -79,7 +79,6 @@ assert_eq!(result.factors(), (89, 97));
 | Setting | Env Variable | Default | Description |
 |---------|--------------|---------|-------------|
 | Log level | `RUST_LOG` | `info` | Standard `env_logger` filter |
-| TNSS-specific log level | `TNSS_LOG` | `info` | TNSS-only filter |
 
 No `.env` file is required for basic usage.
 
@@ -189,7 +188,8 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt  --all -- --check
 # Bump version in workspace Cargo.toml; commit; tag:
 git tag v0.1.X && git push origin v0.1.X
-# .github/workflows/release.yml publishes to crates.io via trusted publishing
+# Publish manually (pre-1.0), in dependency order (core, lattice, tensor,
+# algebra, cli); there is no automated release workflow yet.
 ```
 
 ## Safety and Reliability

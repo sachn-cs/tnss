@@ -1,10 +1,10 @@
 #!/bin/bash
-# Setup script for TNSS development environment
+# Setup script for tensift development environment
 # This script is idempotent and safe to re-run
 
 set -euo pipefail
 
-echo "TNSS Development Environment Setup"
+echo "tensift Development Environment Setup"
 echo "=================================="
 
 # Colors for output

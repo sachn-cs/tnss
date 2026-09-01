@@ -1,4 +1,4 @@
-# Justfile for TNSS workspace
+# Justfile for tensift workspace
 
 # Default recipe - show available commands
 default:
