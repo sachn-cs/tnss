@@ -315,6 +315,7 @@ impl Config {
             num_slices: self.effective_slices(),
             min_configs_per_slice: self.min_configs_per_slice,
             use_work_stealing: self.use_work_stealing,
+            seed: self.seed,
         }
     }
 

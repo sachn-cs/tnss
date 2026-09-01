@@ -66,6 +66,8 @@ pub struct SliceConfig {
     pub num_slices: usize,
     /// Whether to use work-stealing for load balancing.
     pub use_work_stealing: bool,
+    /// Seed for any random sampling of large configuration ranges.
+    pub seed: u64,
 }
 
 impl Default for SliceConfig {
@@ -75,6 +77,7 @@ impl Default for SliceConfig {
             num_slices: num_threads().max(1),
             min_configs_per_slice: 16,
             use_work_stealing: true,
+            seed: 0,
         }
     }
 }
@@ -86,6 +89,7 @@ impl SliceConfig {
             num_slices: num_threads().max(1),
             min_configs_per_slice: 8,
             use_work_stealing: true,
+            seed: 0,
         }
     }
 
@@ -97,6 +101,7 @@ impl SliceConfig {
             num_slices: 4,
             min_configs_per_slice: configs_per_slice,
             use_work_stealing: false,
+            seed: 0,
         }
     }
 
@@ -110,6 +115,7 @@ impl SliceConfig {
             num_slices,
             min_configs_per_slice: min_configs,
             use_work_stealing: true,
+            seed: 0,
         }
     }
 }
@@ -412,7 +418,11 @@ fn partition_config_space_as_slices(n_qubits: usize, num_slices: usize) -> Vec<I
 /// # Returns
 ///
 /// Vector of bit configurations, each as `Vec<bool>`.
-pub fn generate_configs_for_range(range: (usize, usize), n_qubits: usize) -> Vec<Vec<bool>> {
+pub fn generate_configs_for_range(
+    range: (usize, usize),
+    n_qubits: usize,
+    seed: u64,
+) -> Vec<Vec<bool>> {
     let (start, end) = range;
 
     if start > end {
@@ -431,7 +441,7 @@ pub fn generate_configs_for_range(range: (usize, usize), n_qubits: usize) -> Vec
 
     // For large ranges, sample instead of enumerating.
     if count > 10000 {
-        return sample_configs_in_range(range, n_qubits, 10000);
+        return sample_configs_in_range(range, n_qubits, seed, 10000);
     }
 
     (start..end)
@@ -443,9 +453,12 @@ pub fn generate_configs_for_range(range: (usize, usize), n_qubits: usize) -> Vec
 fn sample_configs_in_range(
     range: (usize, usize),
     n_qubits: usize,
+    seed: u64,
     num_samples: usize,
 ) -> Vec<Vec<bool>> {
+    use rand::SeedableRng;
     use rand::seq::IteratorRandom;
+    use rand_chacha::ChaCha8Rng;
 
     let (start, end) = range;
     let range_size = end.saturating_sub(start);
@@ -454,7 +467,7 @@ fn sample_configs_in_range(
         return Vec::new();
     }
 
-    let mut rng = rand::rng();
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let sample_count = num_samples.min(range_size);
 
     // Sample indices uniformly.
@@ -599,6 +612,7 @@ mod tests {
             num_slices: 2,
             min_configs_per_slice: 1,
             use_work_stealing: false, // Use sequential for test determinism.
+            seed: 42,
         };
 
         let results = parallel_config_map(n_qubits, bits_to_index, &config);
@@ -630,7 +644,7 @@ mod tests {
     #[test]
     fn test_generate_configs() {
         let range = (0, 8);
-        let configs = generate_configs_for_range(range, 3);
+        let configs = generate_configs_for_range(range, 3, 42);
 
         assert_eq!(configs.len(), 8);
         assert_eq!(configs[0], vec![false, false, false]);
