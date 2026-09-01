@@ -126,6 +126,46 @@ fn test_config_for_bits() {
     assert!(config_128.n >= config_64.n);
 }
 
+/// Test that the factorization pipeline is deterministic for a fixed seed.
+#[test]
+fn test_determinism_same_seed() {
+    let n = Integer::from(899_u64);
+    let mut config = Config::default_for_bits(10);
+    config.max_cvp = 2000;
+
+    let first = factor::factorize(&n, &config).expect("factorization of 899 should succeed");
+    let second = factor::factorize(&n, &config).expect("factorization of 899 should succeed");
+
+    assert_eq!(
+        (&first.p, &first.q),
+        (&second.p, &second.q),
+        "identical configurations must produce identical factorizations"
+    );
+    assert_eq!(first.p.clone() * first.q.clone(), n);
+}
+
+/// Test that the seeded pipeline factorizes correctly across seeds.
+///
+/// The internals may explore different search paths, but every seed must
+/// still yield a valid factorization of the target.
+#[test]
+fn test_seed_robustness() {
+    let n = Integer::from(143_u64);
+    for seed in [1u64, 42, 1234, u64::MAX / 3] {
+        let mut config = Config::default_for_bits(8);
+        config.seed = seed;
+        config.max_cvp = 2000;
+
+        let result = factor::factorize(&n, &config)
+            .unwrap_or_else(|e| panic!("seed {seed} failed to factorize 143: {e:?}"));
+        assert_eq!(
+            result.p * result.q,
+            n,
+            "seed {seed} produced an invalid factorization"
+        );
+    }
+}
+
 /// Test that the factorization pipeline does not panic on edge-case inputs.
 ///
 /// n = 1 has no non-trivial factors; the pipeline should return an error
@@ -190,4 +230,32 @@ fn test_utils() {
 
     assert_eq!(safe_round_to_i64(3.7), 4);
     assert_eq!(safe_round_to_i64(f64::NAN), 0);
+}
+
+/// Property test: any smooth number built from the basis primes must be
+/// recovered exactly by `factor_smooth`.
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+    use rug::Integer;
+    use rug::ops::Pow;
+    use tnss_algebra::smoothness;
+
+    proptest! {
+        #[test]
+        fn smooth_roundtrip(
+            exponents in proptest::collection::vec(0u32..6, 5),
+        ) {
+            let basis = smoothness::SmoothnessBasis::new(exponents.len());
+            let mut x = Integer::from(1u64);
+            for (i, &e) in exponents.iter().enumerate() {
+                let p = Integer::from(basis.get(i).unwrap());
+                x *= p.pow(e);
+            }
+
+            let recovered = smoothness::factor_smooth(&x, &basis)
+                .expect("product of basis primes must be smooth");
+            prop_assert_eq!(&recovered[1..], &exponents[..]);
+        }
+    }
 }
