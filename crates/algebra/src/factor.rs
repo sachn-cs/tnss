@@ -784,8 +784,6 @@ fn sample_with_index_slicing<R: Rng>(
     cfg: &Config,
     rng: &mut R,
 ) -> Vec<(Vec<bool>, f64)> {
-    use rayon::prelude::*;
-
     let n_vars = hamiltonian.n_vars();
 
     // Generate candidate configurations
@@ -797,17 +795,37 @@ fn sample_with_index_slicing<R: Rng>(
         candidates.push(bits);
     }
 
-    // Evaluate energies in parallel (rayon's scheduler load-balances chunks
-    // dynamically, so no explicit work-stealing knob is needed)
-    let results: Vec<(Vec<bool>, f64)> = candidates
-        .par_iter()
-        .map(|bits| {
-            let prob = ttn.probability(bits);
-            let energy = hamiltonian.energy(bits);
-            // Weight by TTN probability
-            (bits.clone(), energy - prob.ln())
-        })
-        .collect();
+    // Evaluate energies in parallel over a work-stealing chunk cursor.
+    // A single AtomicUsize cursor grants each worker a contiguous chunk of
+    // candidates, then advances to the next. Because evaluating TTN
+    // probability costs varies between candidates, the dynamic chunking
+    // keeps workers busy regardless of per-item cost (real work stealing,
+    // as opposed to a fixed pre-partitioned split).
+    const CHUNK_SIZE: usize = 16;
+    let cursor = std::sync::atomic::AtomicUsize::new(0);
+    let results: Vec<(Vec<bool>, f64)> = {
+        use rayon::prelude::*;
+        (0..num_candidates)
+            .into_par_iter()
+            .map_init(
+                || &cursor,
+                |cursor, _| {
+                    let start = cursor.fetch_add(CHUNK_SIZE, std::sync::atomic::Ordering::Relaxed);
+                    let end = (start + CHUNK_SIZE).min(num_candidates);
+                    (start..end)
+                        .map(|i| {
+                            let bits = &candidates[i];
+                            let prob = ttn.probability(bits);
+                            let energy = hamiltonian.energy(bits);
+                            // Weight by TTN probability
+                            (bits.clone(), energy - prob.ln())
+                        })
+                        .collect::<Vec<(Vec<bool>, f64)>>()
+                },
+            )
+            .flatten()
+            .collect()
+    };
 
     // Sort by energy, filtering out NaN, and return top gamma
     let mut sorted: Vec<(Vec<bool>, f64)> =
