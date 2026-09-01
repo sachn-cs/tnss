@@ -19,7 +19,7 @@ Research-grade release **0.1.x**, tested on semiprimes up to **14 bits** (~16,00
 ## Features
 
 - **7-stage pipeline** — Complete implementation from lattice construction to factor extraction
-- **Workspace architecture** — 6 crates with clear domain boundaries (`tnss-core`, `tnss-lattice`, `tnss-tensor`, `tnss-sampler`, `tnss-algebra`, `tnss-cli`)
+- **Workspace architecture** — 5 crates with clear domain boundaries (`tnss-core`, `tnss-lattice`, `tnss-tensor`, `tnss-algebra`, `tnss-cli`)
 - **Tensor-network sampling** — TTN variational optimization, OPES, and MPO spectral amplification
 - **Tested** — 149 unit tests, 4 Criterion benchmarks
 - **Zero `unsafe` code**, strict clippy compliance
@@ -105,7 +105,6 @@ See [`docs/README.md`](docs/README.md) and [`docs/08-implementation-notes.md`](d
 | `tnss_algebra::factorize` | function | Run the full 7-stage pipeline |
 | `tnss_lattice::lll` / `bkz` / `babai` / `klein` | modules | Lattice reduction and CVP |
 | `tnss_tensor::ttn` / `mpo` / `opes` | modules | Tensor-network samplers |
-| `tnss_sampler` | crate | Fallback samplers (simulated annealing, beam search) |
 | `tnss_cli` | crate | `tnss-cli` binary |
 
 ## Crate Dependency Graph
@@ -117,9 +116,7 @@ tnss-lattice → tnss-core
     ↑
 tnss-tensor → tnss-core, tnss-lattice
     ↑
-tnss-sampler → tnss-core, tnss-lattice, tnss-tensor
-    ↑
-tnss-algebra → tnss-core, tnss-lattice, tnss-tensor, tnss-sampler
+tnss-algebra → tnss-core, tnss-lattice, tnss-tensor
     ↑
 tnss-cli → all crates
 ```
@@ -144,7 +141,6 @@ tnss/
 │   ├── core/         # Core types, errors, constants, utilities, primes
 │   ├── lattice/      # Lattice operations (LLL, segment LLL, BKZ, Babai, Klein)
 │   ├── tensor/       # Tensor networks (TTN, MPO, Hamiltonian, OPES)
-│   ├── sampler/      # Fallback samplers (simulated annealing, beam search)
 │   ├── algebra/      # Number theory, smoothness, GF(2) solver, factorization
 │   └── cli/          # Command-line binary and examples
 ├── docs/             # Stage-by-stage documentation

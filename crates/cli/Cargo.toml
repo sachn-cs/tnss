@@ -18,14 +18,13 @@ path = "src/main.rs"
 
 [features]
 default = ["parallel"]
-parallel = ["tnss-lattice/parallel", "tnss-tensor/parallel", "tnss-algebra/parallel", "tnss-sampler/parallel"]
+parallel = ["tnss-lattice/parallel", "tnss-tensor/parallel", "tnss-algebra/parallel"]
 
 [dependencies]
 tnss-core = { path = "../core" }
 tnss-lattice = { path = "../lattice" }
 tnss-tensor = { path = "../tensor" }
 tnss-algebra = { path = "../algebra" }
-tnss-sampler = { path = "../sampler" }
 clap = { version = "4", features = ["derive"] }
 rug = { workspace = true }
 log = { workspace = true }

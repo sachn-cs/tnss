@@ -177,10 +177,9 @@ The codebase contains **no TODO or FIXME comments**. While this indicates a clea
 |-------|---------------|-------------------|
 | `tnss-core` | 12 | Large prime generation (> 10,000), index slicing with work stealing |
 | `tnss-lattice` | 38 | Full BKZ with large blocksize (> 10), parallel segment LLL |
-| `tnss-sampler` | 13 | Beam search with very large beam width, SA with zero temperature |
 | `tnss-tensor` | 43 | MPO spectral amplification with power > 8, adaptive bond resizing |
 | `tnss-algebra` | 43 | Factor extraction with large kernels (> 100 vectors), timeout paths |
-| **Total** | **149** | |
+| **Total** | **124** | |
 
 **Benchmarks**: 4 Criterion benchmarks in `crates/algebra/benches/factorization.rs`:
 - `bench_small_factorization` (factors 91)

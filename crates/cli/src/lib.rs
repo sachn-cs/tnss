@@ -16,8 +16,5 @@ pub use tnss_core::{Error, Result, consts, utils};
 // --- Lattice reduction (BKZ, pruning, LLL variants) ---
 pub use tnss_lattice::{babai, bkz, lattice, pruning, segment_lll};
 
-// --- Sampling ---
-pub use tnss_sampler::sampler;
-
 // --- Tensor network (TTN, Hamiltonian, adaptive bonds, OPES) ---
 pub use tnss_tensor::{adaptive_bond, hamiltonian, opes, ttn};

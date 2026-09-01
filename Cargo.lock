@@ -955,7 +955,6 @@ dependencies = [
  "tnss-algebra",
  "tnss-core",
  "tnss-lattice",
- "tnss-sampler",
  "tnss-tensor",
 ]
 
@@ -988,25 +987,6 @@ dependencies = [
  "rayon",
  "rug",
  "tnss-core",
-]
-
-[[package]]
-name = "tnss-sampler"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "log",
- "ndarray",
- "num-integer",
- "num-traits",
- "proptest",
- "rand 0.10.2",
- "rand_chacha 0.10.0",
- "rayon",
- "rug",
- "tnss-core",
- "tnss-lattice",
- "tnss-tensor",
 ]
 
 [[package]]
