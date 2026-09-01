@@ -189,16 +189,3 @@ fn test_utils() {
     assert_eq!(safe_round_to_i64(3.7), 4);
     assert_eq!(safe_round_to_i64(f64::NAN), 0);
 }
-
-/// Test constants
-#[test]
-fn test_constants() {
-    use tnss_core::consts::*;
-
-    const _: () = {
-        assert!(EPSILON > 0.0);
-        assert!(MAX_EXPONENT > 0.0);
-        assert!(MIN_TEMPERATURE > 0.0);
-        assert!(BITS_PER_WORD == 64);
-    };
-}

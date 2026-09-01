@@ -46,18 +46,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub mod constants {
     /// Machine epsilon for f64 comparisons.
     pub const EPSILON: f64 = 1e-12;
-
-    /// Maximum exponent for exp() to prevent overflow.
-    pub const MAX_EXPONENT: f64 = 700.0;
-
-    /// Minimum temperature for simulated annealing.
-    pub const MIN_TEMPERATURE: f64 = 1e-10;
-
-    /// Energy scale factor for ordering.
-    pub const ENERGY_SCALE: f64 = 1e9;
-
-    /// Bits per word for GF(2) matrices.
-    pub const BITS_PER_WORD: usize = 64;
 }
 
 /// Re-export of [`constants`] for backward compatibility.
