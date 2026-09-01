@@ -153,9 +153,6 @@ fn run() -> Result<(), String> {
                 "║   Factor extraction:      {:30.2} ║",
                 stats.extraction_time_ms
             );
-            if let Some(avg_bond) = stats.avg_bond_dim {
-                println!("║ Average bond dimension:  {:30.2} ║", avg_bond);
-            }
             println!("╚══════════════════════════════════════════════════════════╝");
 
             if Integer::from(&p * &q) != n {

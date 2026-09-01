@@ -64,6 +64,9 @@ use tnss_tensor::{
 /// Number of candidates to generate per sample when drawing from a TTN.
 const CANDIDATE_MULTIPLIER: usize = 100;
 
+/// Default SVD truncation threshold for tensor compression.
+const DEFAULT_SVD_THRESHOLD: f64 = 1e-12;
+
 /// Performance statistics for the factorization pipeline.
 #[derive(Debug, Clone, Default)]
 pub struct PipelineStats {
@@ -83,8 +86,6 @@ pub struct PipelineStats {
     pub cvp_instances: usize,
     /// Number of smooth relations found.
     pub smooth_relations: usize,
-    /// Average bond dimension (if adaptive).
-    pub avg_bond_dim: Option<f64>,
     /// Number of parallel slices used.
     pub num_slices: usize,
 }
@@ -238,7 +239,7 @@ impl Config {
             enable_index_slicing: true,
             num_slices: num_cpus,
             min_configs_per_slice: 16,
-            svd_threshold: 1e-12,
+            svd_threshold: DEFAULT_SVD_THRESHOLD,
             enable_early_termination: true,
             convergence_threshold: 1e-6,
             max_wall_time_secs: 0,
@@ -733,11 +734,6 @@ fn attempt_factor_extraction(
     if let Some((p, q)) = result {
         let extraction_start = Instant::now();
         stats.extraction_time_ms += extraction_start.elapsed().as_secs_f64() * 1000.0;
-        stats.avg_bond_dim = if cfg.enable_adaptive_bonds {
-            Some(cfg.ttn_bond_dim as f64)
-        } else {
-            None
-        };
 
         info!("Factorization complete in {:.2}s", elapsed_secs);
         return Some((p, q));

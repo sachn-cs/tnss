@@ -46,6 +46,9 @@ fn num_threads() -> usize {
         .unwrap_or(1)
 }
 
+/// Default minimum number of configurations to keep per slice.
+pub const MIN_CONFIGS_PER_SLICE: usize = 16;
+
 /// A slice of physical indices for parallel contraction.
 #[derive(Debug, Clone)]
 pub struct IndexSlice {
@@ -84,11 +87,10 @@ impl SliceConfig {
     pub fn max_parallelism() -> Self {
         Self {
             num_slices: num_threads().max(1),
-            min_configs_per_slice: 8,
+            min_configs_per_slice: MIN_CONFIGS_PER_SLICE,
             seed: 0,
         }
     }
-
     /// Create configuration for memory-limited environments.
     pub fn memory_constrained(max_memory_mb: usize) -> Self {
         // Estimate slice count based on available memory.
