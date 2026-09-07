@@ -1,0 +1,8 @@
+title: "tensift"
+description: "Integer factorization via tensor-network Schnorr’s sieving"
+theme: minima
+logo: /assets/logo.svg
+show_downloads: false
+permalink: /:title/
+plugins:
+  - jekyll-feed
